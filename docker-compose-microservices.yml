@@ -1,0 +1,115 @@
+# docker-compose-microservices.yml
+version: '3.8'
+
+services:
+  # Node 1: Report Service
+  report-service:
+    build:
+      context: ./microservices/report-service
+      dockerfile: Dockerfile
+    container_name: report-service
+    ports:
+      - "50051:50051"
+    environment:
+      - SERVICE_NAME=report-service
+      - GRPC_PORT=50051
+      - DB_HOST=postgres-reports
+      - REGION=us-east
+    depends_on:
+      - postgres-reports
+    networks:
+      - pet-network
+
+  # Node 2: Matching Service
+  matching-service:
+    build:
+      context: ./microservices/matching-service
+      dockerfile: Dockerfile
+    container_name: matching-service
+    ports:
+      - "50052:50052"
+    environment:
+      - SERVICE_NAME=matching-service
+      - GRPC_PORT=50052
+      - REPORT_SERVICE_URL=report-service:50051
+    networks:
+      - pet-network
+
+  # Node 3: Geo Service
+  geo-service:
+    build:
+      context: ./microservices/geo-service
+      dockerfile: Dockerfile
+    container_name: geo-service
+    ports:
+      - "50053:50053"
+    environment:
+      - SERVICE_NAME=geo-service
+      - GRPC_PORT=50053
+      - REDIS_HOST=redis-geo
+    depends_on:
+      - redis-geo
+    networks:
+      - pet-network
+
+  # Node 4: Alert Service
+  alert-service:
+    build:
+      context: ./microservices/alert-service
+      dockerfile: Dockerfile
+    container_name: alert-service
+    ports:
+      - "50054:50054"
+    environment:
+      - SERVICE_NAME=alert-service
+      - GRPC_PORT=50054
+      - GEO_SERVICE_URL=geo-service:50053
+    networks:
+      - pet-network
+
+  # Node 5: Replication Service
+  replication-service:
+    build:
+      context: ./microservices/replication-service
+      dockerfile: Dockerfile
+    container_name: replication-service
+    ports:
+      - "50055:50055"
+    environment:
+      - SERVICE_NAME=replication-service
+      - GRPC_PORT=50055
+      - REPORT_SERVICE_URL=report-service:50051
+      - REGION=us-east
+      - PEER_REGIONS=us-west:50055,eu-central:50055
+    networks:
+      - pet-network
+
+  # Supporting Services
+  postgres-reports:
+    image: postgis/postgis:15-3.3
+    container_name: postgres-reports
+    environment:
+      - POSTGRES_DB=pet_reports
+      - POSTGRES_USER=petuser
+      - POSTGRES_PASSWORD=petpass
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pet-network
+
+  redis-geo:
+    image: redis:7-alpine
+    container_name: redis-geo
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pet-network
+
+networks:
+  pet-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:

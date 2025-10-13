@@ -1,0 +1,240 @@
+// microservices/proto/pet_network.proto
+syntax = "proto3";
+
+package petnetwork;
+
+option go_package = "./;petnetwork";
+
+// ========================================
+// Report Service - FR1: Create Lost/Found Report
+// ========================================
+service ReportService {
+  rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
+  rpc GetReport(GetReportRequest) returns (Report);
+  rpc ListReports(ListReportsRequest) returns (ListReportsResponse);
+}
+
+// ========================================
+// Matching Service - FR4: Distributed Match Query
+// ========================================
+service MatchingService {
+  rpc FindMatches(FindMatchesRequest) returns (FindMatchesResponse);
+  rpc CalculateMatchScore(MatchScoreRequest) returns (MatchScoreResponse);
+}
+
+// ========================================
+// Geo Service - FR2: Nearby Match Search
+// ========================================
+service GeoService {
+  rpc NearbySearch(NearbySearchRequest) returns (NearbySearchResponse);
+  rpc IndexLocation(IndexLocationRequest) returns (IndexLocationResponse);
+}
+
+// ========================================
+// Alert Service - FR3: Real-Time Geo Alerts
+// ========================================
+service AlertService {
+  rpc Subscribe(SubscribeRequest) returns (stream Alert);
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc PublishAlert(PublishAlertRequest) returns (PublishAlertResponse);
+}
+
+// ========================================
+// Replication Service - FR5: Cross-Region Replication
+// ========================================
+service ReplicationService {
+  rpc SyncData(stream SyncDataRequest) returns (stream SyncDataResponse);
+  rpc ResolveConflict(ConflictResolutionRequest) returns (ConflictResolutionResponse);
+}
+
+// ========================================
+// Common Messages
+// ========================================
+
+message Report {
+  string id = 1;
+  ReportType type = 2;
+  string pet_type = 3;
+  string breed = 4;
+  string color = 5;
+  Location location = 6;
+  int64 timestamp = 7;
+  string description = 8;
+  repeated string photo_urls = 9;
+  string contact_info = 10;
+  string region = 11;
+  int64 version = 12;
+}
+
+enum ReportType {
+  LOST = 0;
+  FOUND = 1;
+}
+
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+  string address = 3;
+}
+
+// ========================================
+// Report Service Messages
+// ========================================
+
+message CreateReportRequest {
+  ReportType type = 1;
+  string pet_type = 2;
+  string breed = 3;
+  string color = 4;
+  Location location = 5;
+  string description = 6;
+  repeated string photo_urls = 7;
+  string contact_info = 8;
+}
+
+message CreateReportResponse {
+  Report report = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetReportRequest {
+  string id = 1;
+}
+
+message ListReportsRequest {
+  ReportType type = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message ListReportsResponse {
+  repeated Report reports = 1;
+  int32 total = 2;
+}
+
+// ========================================
+// Matching Service Messages
+// ========================================
+
+message FindMatchesRequest {
+  string report_id = 1;
+  double max_distance_km = 2;
+  int32 limit = 3;
+}
+
+message FindMatchesResponse {
+  repeated MatchResult matches = 1;
+}
+
+message MatchResult {
+  Report report = 1;
+  double match_score = 2;
+  double distance_km = 3;
+}
+
+message MatchScoreRequest {
+  Report report1 = 1;
+  Report report2 = 2;
+}
+
+message MatchScoreResponse {
+  double score = 1;
+  repeated string matching_features = 2;
+}
+
+// ========================================
+// Geo Service Messages
+// ========================================
+
+message NearbySearchRequest {
+  Location center = 1;
+  double radius_km = 2;
+  ReportType type = 3;
+}
+
+message NearbySearchResponse {
+  repeated Report reports = 1;
+}
+
+message IndexLocationRequest {
+  string report_id = 1;
+  Location location = 2;
+}
+
+message IndexLocationResponse {
+  bool success = 1;
+}
+
+// ========================================
+// Alert Service Messages
+// ========================================
+
+message SubscribeRequest {
+  string user_id = 1;
+  Location center = 2;
+  double radius_km = 3;
+  repeated string pet_types = 4;
+}
+
+message Alert {
+  string alert_id = 1;
+  Report report = 2;
+  string reason = 3;
+  int64 timestamp = 4;
+}
+
+message UnsubscribeRequest {
+  string user_id = 1;
+  string subscription_id = 2;
+}
+
+message UnsubscribeResponse {
+  bool success = 1;
+}
+
+message PublishAlertRequest {
+  Report report = 1;
+}
+
+message PublishAlertResponse {
+  int32 subscribers_notified = 1;
+}
+
+// ========================================
+// Replication Service Messages
+// ========================================
+
+message SyncDataRequest {
+  string source_region = 1;
+  repeated Report reports = 2;
+  int64 timestamp = 3;
+}
+
+message SyncDataResponse {
+  bool success = 1;
+  repeated string synced_ids = 2;
+  repeated Conflict conflicts = 3;
+}
+
+message Conflict {
+  string report_id = 1;
+  Report local_version = 2;
+  Report remote_version = 3;
+}
+
+message ConflictResolutionRequest {
+  Conflict conflict = 1;
+  ResolutionStrategy strategy = 2;
+}
+
+enum ResolutionStrategy {
+  LAST_WRITE_WINS = 0;
+  HIGHEST_VERSION = 1;
+  MANUAL_MERGE = 2;
+}
+
+message ConflictResolutionResponse {
+  Report resolved_report = 1;
+  bool success = 2;
+}
