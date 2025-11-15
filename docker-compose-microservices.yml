@@ -5,8 +5,8 @@ services:
   # Node 1: Report Service
   report-service:
     build:
-      context: ./microservices/report-service
-      dockerfile: Dockerfile
+      context: ./microservices
+      dockerfile: ./report-service/Dockerfile
     container_name: report-service
     ports:
       - "50051:50051"
@@ -23,8 +23,8 @@ services:
   # Node 2: Matching Service
   matching-service:
     build:
-      context: ./microservices/matching-service
-      dockerfile: Dockerfile
+      context: ./microservices
+      dockerfile: ./matching-service/Dockerfile
     container_name: matching-service
     ports:
       - "50052:50052"
@@ -38,8 +38,8 @@ services:
   # Node 3: Geo Service
   geo-service:
     build:
-      context: ./microservices/geo-service
-      dockerfile: Dockerfile
+      context: ./microservices
+      dockerfile: ./geo-service/Dockerfile
     container_name: geo-service
     ports:
       - "50053:50053"
@@ -55,8 +55,8 @@ services:
   # Node 4: Alert Service
   alert-service:
     build:
-      context: ./microservices/alert-service
-      dockerfile: Dockerfile
+      context: ./microservices
+      dockerfile: ./alert-service/Dockerfile
     container_name: alert-service
     ports:
       - "50054:50054"
@@ -70,8 +70,8 @@ services:
   # Node 5: Replication Service
   replication-service:
     build:
-      context: ./microservices/replication-service
-      dockerfile: Dockerfile
+      context: ./microservices
+      dockerfile: ./replication-service/Dockerfile
     container_name: replication-service
     ports:
       - "50055:50055"

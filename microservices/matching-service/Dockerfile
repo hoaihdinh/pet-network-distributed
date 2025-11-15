@@ -4,11 +4,14 @@ WORKDIR /app
 
 RUN apk add --no-cache git
 
-COPY ../proto /app/proto
-COPY go.mod go.sum ./
+COPY ./proto /app/proto
+COPY ./matching-service/go.mod ./matching-service/go.sum ./matching-service/
+
+WORKDIR /app/matching-service
+
 RUN go mod download
 
-COPY main.go .
+COPY ./matching-service/main.go .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o service main.go
 
@@ -18,7 +21,7 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-COPY --from=builder /app/service .
+COPY --from=builder /app/matching-service/service .
 
 EXPOSE 50052
 
