@@ -7,19 +7,21 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"time"
+
+	// "strconv"
+
+	pb "petnetwork/proto"
 
 	"github.com/go-redis/redis/v8"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	pb "petnetwork/proto"
 )
 
 type geoServer struct {
 	pb.UnimplementedGeoServiceServer
-	rdb         *redis.Client
-	reportStub  pb.ReportServiceClient
+	rdb        *redis.Client
+	reportStub pb.ReportServiceClient
 }
 
 func main() {
@@ -125,12 +127,12 @@ func (s *geoServer) NearbySearch(ctx context.Context, req *pb.NearbySearchReques
 
 	// GeoRadius: find reports within radius
 	results, err := s.rdb.GeoRadius(ctx, geoKey, req.Center.Longitude, req.Center.Latitude, &redis.GeoRadiusQuery{
-		Radius:      req.RadiusKm,
-		Unit:        "km",
-		WithDist:    true,
-		WithCoord:   true,
-		Sort:        "ASC",
-		Count:       50,
+		Radius:    req.RadiusKm,
+		Unit:      "km",
+		WithDist:  true,
+		WithCoord: true,
+		Sort:      "ASC",
+		Count:     50,
 	}).Result()
 
 	if err != nil {
