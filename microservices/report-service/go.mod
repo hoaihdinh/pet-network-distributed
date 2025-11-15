@@ -3,19 +3,19 @@ module petnetwork/report-service
 go 1.21
 
 require (
-	github.com/google/uuid v1.5.0
+	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
-	google.golang.org/grpc v1.60.1
+	google.golang.org/grpc v1.64.0
 	petnetwork/proto v0.0.0
 )
 
 require (
-	github.com/golang/protobuf v1.5.3 // indirect
-	golang.org/x/net v0.20.0 // indirect
-	golang.org/x/sys v0.16.0 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
+	golang.org/x/net v0.22.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240116215550-a9fa1716bcac // indirect
-	google.golang.org/protobuf v1.32.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240318140521-94a12d6c2237 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 )
 
 replace petnetwork/proto => ../proto
