@@ -9,4 +9,4 @@ COPY . .
 
 ENV PYTHONPATH="/app/proto_raft"
 
-CMD ["python", "-u", "raft_node2.py"]
+CMD ["python", "-u", "raft_node.py"]

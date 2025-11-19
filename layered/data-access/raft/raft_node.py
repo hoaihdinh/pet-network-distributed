@@ -106,8 +106,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                             self._become_leader()
                             return
 
-            except Exception:
-                pass
+            except Exception as e:
+                print("!UH OH ", e)
 
     async def _run_timer(self, task: Coroutine[Any, Any, None], delay: float) -> None:
         try:
@@ -134,6 +134,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.current_term = term
 
         self._set_timeout_task(self._become_candidate, self._election_timeout())
+        print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term})")
 
     async def _become_candidate(self) -> None:
         self.state = RaftState.CANDIDATE
@@ -144,11 +145,17 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         self._set_timeout_task(self._become_candidate, self._election_timeout())
         asyncio.create_task(self._start_election())
+        
+        print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term})")
+
     
     def _become_leader(self) -> None:
         self.state = RaftState.LEADER
         self.leader_id = self.node_id
         self.voted_for = None
+
+        print(f"DEBUG: Node {self.node_id} is LEADER (term = {self.current_term})")
+
 
         #     self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout)
         # asyncio.create_task(self._send_heartbeats())
@@ -156,17 +163,29 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== RPC Handlers ==========
 
     async def RequestVote(self, request: raft_pb2.RequestVoteRequest, context):
+
         print(f"Node {self.node_id} runs RPC RequestVote to Node {request.candidate_id}")
+        
         async with self.lock:
             term: int = self.current_term
             vote_granted: bool = False
 
-            # what is this logic
-            
-        return raft_pb2.RequestVoteResponse(term, vote_granted)
+            # Grant vote IF one of the following:
+            # - current_term == request.term and is a FOLLOWER node who does not know the leader and has not voted yet
+            # - current_term < request.term (term is outdated)
+            if((term == request.term and self.state == RaftState.FOLLOWER and
+                self.voted_for is None and self.leader_id is None) or
+               (self.current_term < request.term)):
+                
+                term = request.term
+                vote_granted = True
+                self._become_follower(term, voted_for=request.candidate_id)
 
+        return raft_pb2.RequestVoteResponse(
+            term=term,
+            vote_granted=vote_granted
+        )
 
-    
     async def AppendEntries(self, request, context):
         pass
 
