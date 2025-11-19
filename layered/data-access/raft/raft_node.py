@@ -3,7 +3,7 @@ import grpc.aio
 import asyncio
 import os
 
-from typing import Any, List, Callable, Awaitable, Coroutine, Optional
+from typing import Any, List, Coroutine, Optional
 from enum import Enum
 from proto_raft import raft_pb2
 from proto_raft import raft_pb2_grpc
