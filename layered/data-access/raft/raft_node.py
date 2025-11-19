@@ -1,234 +1,189 @@
-import sys
 import random
-import threading
-import grpc
+import grpc.aio
+import asyncio
+import os
 
-from raft.proto_raft import raft_pb2
-from raft.proto_raft import raft_pb2_grpc
+from typing import Any, List, Callable, Awaitable, Coroutine, Optional
 from enum import Enum
-
-heartbeat_timeout = 0.100 # s
-
-def election_timeout():
-    return random.uniform(0.150, 0.300) # [0.150s, 0.300s]
+from proto_raft import raft_pb2
+from proto_raft import raft_pb2_grpc
 
 class RaftState(Enum):
     FOLLOWER = 1
     CANDIDATE = 2
     LEADER = 3
 
+class PeerNode():
+    def __init__(self, id: int, url: str, stub: raft_pb2_grpc.RaftNodeStub):
+        self.id = id
+        self.url = url
+        self.stub = stub
+
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
-    def __init__(self, node_id, peers):
-        self.node_id = node_id
-        self.state = RaftState.FOLLOWER
-        self.current_term = 0
-        self.leader_id = None
-        self.voted_for = None
-        self.acks = 0
-        self.log = []
-        self.commit_index = -1
-        self.sent_uncommitted_entries = []
-        self.sent_entries_tag = 0
-        self.timeout_thread = None
-        self.lock = threading.Lock()
-        
-        self.peers = peers
-        self.stubs = {}
-        for peer in peers:
-            channel = grpc.insecure_channel(peer)
+    def __init__(self, node_id: int, peers: List[str]):
+        self._heartbeat_timeout: float = 1 # in seconds
+
+        self.node_id: int = node_id
+        self.current_term: int = 0
+        self.leader_id: Optional[int] = None
+        self.voted_for: Optional[int] = None
+        self.acks: int = 0
+        self.commit_index: int = 0
+        self.sent_uncommitted_tag: int = 0
+        self.sent_uncommitted_entries: List[raft_pb2.LogEntry] = []
+        self.log: List[raft_pb2.LogEntry] = []
+        self.state: RaftState = RaftState.FOLLOWER
+        self.timeout_task: Optional[asyncio.Task] = None
+        self.lock = asyncio.Lock()
+
+        self.total_nodes: int = len(peers) + 1
+        self.peer_nodes: dict[PeerNode] = {}
+        for peer_details in peers:
+            id, host, port = peer_details.split(":")
+            peer_id  = int(id)
+            peer_url = f"{host}:{port}"
+
+            channel = grpc.aio.insecure_channel(peer_url)
             stub = raft_pb2_grpc.RaftNodeStub(channel)
-            self.stubs[peer] = stub
 
-        self.__become_follower(term=0)
+            self.peer_nodes[peer_id] = PeerNode(peer_id, peer_url, stub)
+        
+        self._become_follower(0)
 
-    def __start_timer(self, timeout_time, function):
-        """
-        Starts or resets the election/heartbeat timer.
-        On timeout, calls the given function.
-        """
-        if self.timeout_thread:
-            self.timeout_thread.cancel()
-        self.timeout_thread = threading.Timer(timeout_time, function)
-        self.timeout_thread.start()
+    def _election_timeout(self) -> float:
+        return random.uniform(1.5, 3) # an interval in seconds
 
-    def handle_client_request(self, request):
-        if (self.state == RaftState.LEADER):
-            pass # Handle client request (not implemented) 
-        elif (self.leader_id is not None):
-            response = self.stubs[self.leader_id].ForwardClientRequest(request)
-            return response
-        else:
-            pass # No leader known, reject request (not implemented)
+    def _has_majority(self):
+        return self.acks > self.total_nodes // 2
 
-    # ========== RPC Handlers ==========
+    async def _send_append_entries(self,
+                                   request: raft_pb2.AppendEntriesRequest,
+                                   peer_node: PeerNode ) -> raft_pb2.AppendEntriesResponse:
+        print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_node.id}")
+        return await peer_node.stub.AppendEntries(request)
 
-    def RequestVote(self, request, context):
-        if (self.current_term > request.term or
-            self.state != RaftState.FOLLOWER or
-            self.voted_for is not None):
+    async def _send_heartbeats(self):
+        async with self.lock:
+            self.sent_uncommitted_tag += 1
 
-            return raft_pb2.RequestVoteResponse(
-                term=self.current_term,
-                vote_granted=False
-            )
+            self.sent_uncommitted_entries = []
+            for i in range(self.commit_index):
+                self.sent_uncommitted_entries.append(self.log[i])
+            
+        pass
 
-        self.__become_follower(request.term, vote_for=request.candidate_id)
+    async def _send_vote_request(self,
+                                 request: raft_pb2.RequestVoteRequest,
+                                 peer_node: PeerNode ) -> raft_pb2.RequestVoteResponse:
+        print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_node.id}")
+        return await peer_node.stub.RequestVote(request)
 
-        return raft_pb2.RequestVoteResponse(
-            term=self.current_term,
-            vote_granted=True
-        )
-
-    def AppendEntries(self, request, context):
-        if (self.current_term > request.term):
-            return raft_pb2.AppendEntriesResponse(
-                term=self.current_term,
-                ack_status=False,
-                tag=request.tag
-            )
-
-        self.__become_follower(request.term, leader_id=request.leader_id)
-
-        return raft_pb2.AppendEntriesResponse(
-            term=self.current_term,
-            ack_status=True,
-            tag=request.tag
-        )
-
-    def ForwardClientRequest(self, request, context):
-        if (self.state == RaftState.LEADER):
-            pass # Handle client request (not implemented) 
-        elif (self.leader_id is not None):
-            response = self.stubs[self.leader_id].ForwardClientRequest(request)
-            return response
-        else:
-            return None # No leader known, reject request (not implemented)
-
-
-    # ========== Election and Heartbeat Methods ==========
-
-    def __send_vode_request_to_peer(self, peer, stub, request):
-        response = stub.RequestVote(request)
-        if (response.term > self.current_term):
-            self.__become_follower(response.term)
-            return
-
-        with self.lock:
-            if (response.vote_granted):
-                self.acks += 1
-
-                if (self.acks > len(self.peers) // 2):
-                    self.__become_leader()
-                    return
-
-    def __start_election(self):
-        with self.lock:
-            self.acks = 1 # Vote for self
-
+    async def _start_election(self):
         request = raft_pb2.RequestVoteRequest(
             term=self.current_term,
             candidate_id=self.node_id
         )
-        
-        for peer, stub in self.stubs.items():
+
+        tasks: List[asyncio.Task[raft_pb2.RequestVoteResponse]] = []
+        for peer_node in self.peer_nodes.values():
+            tasks.append(asyncio.create_task(self._send_vote_request(request, peer_node)))
+
+        for task in asyncio.as_completed(tasks):
             try:
-                threading.Thread(
-                    target=self.__send_vode_request_to_peer,
-                    args=(peer, stub, request)
-                ).start()
+                response: raft_pb2.RequestVoteResponse = await task
 
-            except Exception as e:
-                print(f'Error sending vote request to peer {peer}: {e}')
+                async with self.lock:
+                    if (self.state != RaftState.CANDIDATE):
+                        return
 
-    def __send_heartbeat_to_peer(self, peer, stub, request):
-        response = stub.AppendEntries(request)
-        if (response.term > self.current_term):
-            self.__become_follower(response.term)
-            return
+                    if (response.term > self.current_term):
+                        self._become_follower(response.term)
+                        return
+                    
+                    if (response.term == self.current_term and response.vote_granted):
+                        self.acks += 1
+                        if (self._has_majority()):
+                            self._become_leader()
+                            return
 
-        with self.lock:
-            if (response.tag == self.sent_entries_tag and 
-                response.ack_status):
-    
-                self.acks += 1
+            except Exception:
+                pass
 
-                if (self.acks > len(self.peers) // 2):
-                    # TODO: Execute all uncommitted entries that are majority ACKed
-                    self.commit_index += len(self.sent_uncommitted_entries)
-                    return
+    async def _run_timer(self, task: Coroutine[Any, Any, None], delay: float) -> None:
+        try:
+            await asyncio.sleep(delay)
+            await task()
+        except asyncio.CancelledError:
+            pass
 
-    def __send_heartbeats(self):
-        with self.lock:
-            self.acks = 1
-            self.sent_entries_tag += 1
-        
-            self.sent_uncommitted_entries = [entry for entry in self.log if entry.index > self.commit_index]
-            
-            request = raft_pb2.AppendEntriesRequest(
-                term=self.current_term,
-                leader_id=self.node_id,
-                entries=self.log,
-                leader_commit=self.commit_index,
-                tag=self.sent_entries_tag
-            )
+    def _set_timeout_task(self, task: Coroutine[Any, Any, None], delay: float) -> None:
+        if (self.timeout_task):
+            self.timeout_task.cancel()
 
-        for peer, stub in self.stubs.items():
-            try:
-                threading.Thread(
-                    target=self.__send_heartbeat_to_peer,
-                    args=(peer, stub, request)
-                ).start()
-            
-            except Exception as e:
-                print(f'Error sending heartbeat to peer {peer}: {e}')
-    
-        self.__start_timer(heartbeat_timeout, self.__send_heartbeats)
+        self.timeout_task = asyncio.create_task(self._run_timer(task, delay))
 
     # ========== State Transition Methods ==========
 
-    def __become_leader(self):
+    def _become_follower(self,
+                               term: int,
+                               leader_id: Optional[int] = None,
+                               voted_for: Optional[int] = None ) -> None:
+        self.state = RaftState.FOLLOWER
+        self.leader_id = leader_id
+        self.voted_for = voted_for
+        self.current_term = term
+
+        self._set_timeout_task(self._become_candidate, self._election_timeout())
+
+    async def _become_candidate(self) -> None:
+        self.state = RaftState.CANDIDATE
+        self.current_term += 1
+        self.leader_id = None
+        self.voted_for = self.node_id
+        self.acks = 1
+
+        self._set_timeout_task(self._become_candidate, self._election_timeout())
+        asyncio.create_task(self._start_election())
+    
+    def _become_leader(self) -> None:
         self.state = RaftState.LEADER
         self.leader_id = self.node_id
         self.voted_for = None
 
-        self.__send_heartbeats()
-        self.__start_timer(heartbeat_timeout, self.__send_heartbeats)
+        #     self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout)
+        # asyncio.create_task(self._send_heartbeats())
 
-    def __become_follower(self, term, vote_for=None, leader_id=None):
-        self.state = RaftState.FOLLOWER
-        self.current_term = term
-        self.voted_for = vote_for
-        self.leader_id = leader_id
+    # ========== RPC Handlers ==========
 
-        self.__start_timer(election_timeout(), self.__become_candidate)
+    async def RequestVote(self, request: raft_pb2.RequestVoteRequest, context):
+        print(f"Node {self.node_id} runs RPC RequestVote to Node {request.candidate_id}")
+        async with self.lock:
+            term: int = self.current_term
+            vote_granted: bool = False
 
-    def __become_candidate(self):
-        self.state = RaftState.CANDIDATE
-        self.current_term += 1
-        self.acks = 1 # Vote for self
-        self.voted_for = self.node_id
-        self.leader_id = None
-        self.__start_election()
-
-        self.__start_timer(election_timeout(), self.__become_candidate)
+            # what is this logic
+            
+        return raft_pb2.RequestVoteResponse(term, vote_granted)
 
 
-def serve(node_id, peers, port):
-    server = grpc.server(threading.ThreadPoolExecutor(max_workers=10))
+    
+    async def AppendEntries(self, request, context):
+        pass
+
+    async def ForwardClientRequest(self, request, context):
+        pass
+
+async def serve(node_id: int, peers: List[str], port: int):
+    server = grpc.aio.server()
     raft_pb2_grpc.add_RaftNodeServicer_to_server(RaftNode(node_id, peers), server)
-    server.add_insecure_port(f'[::]:{port}')
-    server.start()
-    print(f'Raft node {node_id} started on port {port}')
-    server.wait_for_termination()
+    server.add_insecure_port(f"[::]:{port}")
+    await server.start()
+    print(f"Raft node {node_id} started on port {port}")
+    await server.wait_for_termination()
 
 if (__name__ == '__main__'):
-    if (len(sys.argv) < 4):
-        print('Usage: python raft_node.py <node_id> <port> <peer1_host:peer1_port> [<peer2_host:peer2_port> ...]')
-        sys.exit(1)
+    node_id = int(os.getenv("NODE_ID"))
+    peers   = os.getenv("PEERS").split(",")
+    port    = int(os.getenv("PORT"))
 
-    node_id = sys.argv[1]
-    port    = int(sys.argv[2])
-    peers   = sys.argv[3:]
-
-    serve(node_id, peers, port)
-
+    asyncio.run(serve(node_id, peers, port))

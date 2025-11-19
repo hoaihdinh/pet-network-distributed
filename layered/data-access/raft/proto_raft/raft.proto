@@ -13,7 +13,7 @@ message RequestVoteRequest {
 
 message RequestVoteResponse {
     uint32 term = 1;
-    bool vote_for = 2;
+    bool vote_granted = 2;
 }
 
 message AppendEntriesRequest {

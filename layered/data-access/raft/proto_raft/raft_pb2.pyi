@@ -25,12 +25,12 @@ class RequestVoteRequest(_message.Message):
     def __init__(self, term: _Optional[int] = ..., candidate_id: _Optional[int] = ...) -> None: ...
 
 class RequestVoteResponse(_message.Message):
-    __slots__ = ("term", "vote_for")
+    __slots__ = ("term", "vote_granted")
     TERM_FIELD_NUMBER: _ClassVar[int]
-    VOTE_FOR_FIELD_NUMBER: _ClassVar[int]
+    VOTE_GRANTED_FIELD_NUMBER: _ClassVar[int]
     term: int
-    vote_for: bool
-    def __init__(self, term: _Optional[int] = ..., vote_for: bool = ...) -> None: ...
+    vote_granted: bool
+    def __init__(self, term: _Optional[int] = ..., vote_granted: bool = ...) -> None: ...
 
 class AppendEntriesRequest(_message.Message):
     __slots__ = ("term", "leader_id", "log", "commit_index", "tag")
