@@ -21,9 +21,11 @@ class PeerNode():
 
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     def __init__(self, node_id: int, peers: List[str]):
+        self.DEBUG_ONLY_REPLICATED_DATA: int = 0
+
         self._heartbeat_timeout: float = 3 # in seconds
-        self._election_timeout_lo: float = 6
-        self._election_timeout_hi: float = 9
+        self._get_next_election_timeout_lo: float = 6
+        self._get_next_election_timeout_hi: float = 9
 
         self.node_id: int = node_id
         self.current_term: int = 0
@@ -31,8 +33,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.voted_for: Optional[int] = None
         self.acks: int = 0
         self.commit_index: int = 0
-        self.sent_uncommitted_tag: int = 0
-        self.sent_uncommitted_entries: List[raft_pb2.LogEntry] = []
+        self.sent_log_tag: int = 0
         self.log: List[raft_pb2.LogEntry] = []
         self.state: RaftState = RaftState.FOLLOWER
         self.timeout_task: Optional[asyncio.Task] = None
@@ -54,8 +55,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     # ========== Utility Methods ==========
 
-    def _election_timeout(self) -> float:
-        return random.uniform(self._election_timeout_lo, self._election_timeout_hi)
+    def _get_next_election_timeout(self) -> float:
+        return random.uniform(self._get_next_election_timeout_lo, self._get_next_election_timeout_hi)
 
     def _has_majority(self):
         return self.acks > self.total_nodes // 2
@@ -82,7 +83,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         coroutine = self._run_periodic_timer if is_periodic else self._run_oneshot_timer
         self.timeout_task = asyncio.create_task(coroutine(task, delay))
 
-    # ========== RPC Sending RAFT thing idk what to put here Methods ==========
+    # ========== Sending RPC Requests and Handling RPC Responses ==========
 
     async def _send_append_entries(self,
                                    request: raft_pb2.AppendEntriesRequest,
@@ -96,18 +97,27 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     async def _send_heartbeats(self):
         async with self.lock:
-            self.sent_uncommitted_tag += 1
+            # >>>>>>>>>> DEBUG
+            self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
+            # DEBUG <<<<<<<<<<
 
-            self.sent_uncommitted_entries = []
-            for i in range(self.commit_index):
-                self.sent_uncommitted_entries.append(self.log[i])
-        
+            self.acks = 1
+            self.sent_log_tag += 1
+
+            num_of_sent_uncommitted_entries = len(self.log) - self.commit_index
+
+            print(f"DEBUG: Node LEADER {self.node_id} log:")
+            for l in self.log:
+                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            print(f"DEBUG: c = {self.commit_index}, num_uncommit = {num_of_sent_uncommitted_entries}")
+            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
                 leader_id=self.node_id,
                 log=self.log,
                 commit_index=self.commit_index,
-                tag=self.sent_uncommitted_tag
+                tag=self.sent_log_tag
             )
 
         tasks: List[asyncio.Task[raft_pb2.AppendEntriesResponse]] = []
@@ -119,7 +129,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 response: raft_pb2.AppendEntriesResponse = await task
 
                 async with self.lock:
-                    if (self.state != RaftState.LEADER or response.tag != self.sent_uncommitted_tag):
+                    if (self.state != RaftState.LEADER or response.tag != self.sent_log_tag):
                         return
 
                     if (response.term > self.current_term):
@@ -129,7 +139,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                     if (response.term == self.current_term and response.ack_status):
                         self.acks += 1
                         if (self._has_majority()):
-                            print(f"DEBUG: Node {self.node_id} will now commit {len(self.sent_uncommitted_entries)} entries")
+                            print(f"DEBUG: Node {self.node_id} will now commit {num_of_sent_uncommitted_entries} entries")
+
+                            for entry in self.log[self.commit_index:]:
+                                self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+
+                            self.commit_index += num_of_sent_uncommitted_entries
                             return
             except Exception as e:
                 pass
@@ -143,9 +158,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         except Exception:
             pass
 
-    async def _start_election(self):
+    async def _start_election(self, target_term: int):
         request = raft_pb2.RequestVoteRequest(
-            term=self.current_term,
+            term=target_term,
             candidate_id=self.node_id
         )
 
@@ -158,14 +173,14 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 response: raft_pb2.RequestVoteResponse = await task
 
                 async with self.lock:
-                    if (self.state != RaftState.CANDIDATE):
+                    if (self.state != RaftState.CANDIDATE or self.current_term != target_term):
                         return
 
-                    if (response.term > self.current_term):
+                    if (response.term > target_term):
                         self._become_follower(response.term)
                         return
                     
-                    if (response.term == self.current_term and response.vote_granted):
+                    if (response.term == target_term and response.vote_granted):
                         self.acks += 1
                         if (self._has_majority()):
                             self._become_leader()
@@ -186,7 +201,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term})")
         
-        self._set_timeout_task(self._become_candidate, self._election_timeout(), False)
+        self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), False)
 
     async def _become_candidate(self) -> None:
         async with self.lock:
@@ -195,11 +210,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             self.leader_id = None
             self.voted_for = self.node_id
             self.acks = 1
+            target_term = self.current_term
 
             print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term})")
 
-            self._set_timeout_task(self._become_candidate, self._election_timeout(), False)
-        asyncio.create_task(self._start_election())
+            self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), False)
+        asyncio.create_task(self._start_election(target_term))
 
     def _become_leader(self) -> None:
         self.state = RaftState.LEADER
@@ -250,8 +266,17 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 self._become_follower(term, leader_id=request.leader_id)
                 self.log = request.log
 
-                # for each log after self.commit_index, execute actions up to request.commit_index
+                # for each log after self.commit_index, execute actions up to request.
+                for entry in self.log[self.commit_index:request.commit_index]:
+                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+
                 self.commit_index = request.commit_index
+
+            print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
+            for l in self.log:
+                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            print(f"DEBUG: c = {self.commit_index}")
+            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,
@@ -261,6 +286,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     async def ForwardClientRequest(self, request, context):
         pass
+
+
 
 async def serve(node_id: int, peers: List[str], port: int):
     server = grpc.aio.server()
