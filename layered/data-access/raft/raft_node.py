@@ -109,10 +109,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 tag=self.heartbeat_tag
             )
 
-        # Send the AppendEntries RPC to all peer nodes
-        tasks: List[asyncio.Task[raft_pb2.AppendEntriesResponse]] = []
-        for peer_id, stub in self.peer_stubs.items():
-            tasks.append(asyncio.create_task(self._send_append_entries(request, stub, peer_id)))
+        # Send the AppendEntries RPC to all peer nodes (list of asyncio.Tasks)
+        tasks = [asyncio.create_task(self._send_append_entries(request, stub, peer_id))
+                 for peer_id, stub in self.peer_stubs.items()]
         
         # As peer nodes respond, handle each AppendEntriesResponse
         for task in asyncio.as_completed(tasks):
@@ -167,10 +166,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             candidate_id=self.node_id
         )
 
-        # Send the RequestVote RPC to all peer nodes
-        tasks: List[asyncio.Task[raft_pb2.RequestVoteResponse]] = []
-        for peer_id, stub in self.peer_stubs.values():
-            tasks.append(asyncio.create_task(self._send_vote_request(request, stub, peer_id)))
+        # Send the RequestVote RPC to all peer nodes (list of asyncio.Tasks)
+        tasks = [asyncio.create_task(self._send_vote_request(request, stub, peer_id))
+                 for peer_id, stub in self.peer_stubs.values()]
 
         # As peer nodes respond, handle each RequestVoteResponse
         for task in asyncio.as_completed(tasks):
