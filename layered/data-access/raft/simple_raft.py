@@ -14,7 +14,8 @@ class RaftState(Enum):
 
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     def __init__(self, node_id: int, port: int, peers: List[str]):
-        self._heartbeat_timeout: float = 3 # in seconds
+        # these timeout values are in seconds
+        self._heartbeat_timeout: float = 1
         self._election_timeout_lo: float = 6
         self._election_timeout_hi: float = 9
 
