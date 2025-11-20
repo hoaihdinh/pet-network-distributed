@@ -13,12 +13,6 @@ class RaftState(Enum):
     CANDIDATE = 2
     LEADER = 3
 
-class PeerNode():
-    def __init__(self, id: int, url: str, stub: raft_pb2_grpc.RaftNodeStub):
-        self.id = id
-        self.url = url
-        self.stub = stub
-
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     def __init__(self, node_id: int, peers: List[str]):
         self.DEBUG_ONLY_REPLICATED_DATA: int = 0
@@ -40,16 +34,14 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.lock = asyncio.Lock()
 
         self.total_nodes: int = len(peers) + 1
-        self.peer_nodes: dict[PeerNode] = {}
+        self.peer_stubs: dict[int, raft_pb2_grpc.RaftNodeStub] = {}
         for peer_details in peers:
             id, host, port = peer_details.split(":")
             peer_id  = int(id)
             peer_url = f"{host}:{port}"
 
             channel = grpc.aio.insecure_channel(peer_url)
-            stub = raft_pb2_grpc.RaftNodeStub(channel)
-
-            self.peer_nodes[peer_id] = PeerNode(peer_id, peer_url, stub)
+            self.peer_stubs[peer_id] = raft_pb2_grpc.RaftNodeStub(channel)
         
         self._become_follower(0)
 
@@ -87,11 +79,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     async def _send_append_entries(self,
                                    request: raft_pb2.AppendEntriesRequest,
-                                   peer_node: PeerNode ) -> raft_pb2.AppendEntriesResponse:
-        print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_node.id}")
+                                   stub: raft_pb2_grpc.RaftNodeStub,
+                                   peer_id: int) -> raft_pb2.AppendEntriesResponse:
+        print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}")
         
         try:
-            return await peer_node.stub.AppendEntries(request)
+            return await stub.AppendEntries(request)
         except Exception:
             pass
 
@@ -121,8 +114,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             )
 
         tasks: List[asyncio.Task[raft_pb2.AppendEntriesResponse]] = []
-        for peer_node in self.peer_nodes.values():
-            tasks.append(asyncio.create_task(self._send_append_entries(request, peer_node)))
+        for peer_id, stub in self.peer_stubs.items():
+            tasks.append(asyncio.create_task(self._send_append_entries(request, stub, peer_id)))
         
         for task in asyncio.as_completed(tasks):
             try:
@@ -151,10 +144,11 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     async def _send_vote_request(self,
                                  request: raft_pb2.RequestVoteRequest,
-                                 peer_node: PeerNode ) -> raft_pb2.RequestVoteResponse:
-        print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_node.id}")
+                                 stub: raft_pb2_grpc.RaftNodeStub,
+                                 peer_id: int ) -> raft_pb2.RequestVoteResponse:
+        print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}")
         try:
-            return await peer_node.stub.RequestVote(request)
+            return await stub.RequestVote(request)
         except Exception:
             pass
 
@@ -165,8 +159,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         )
 
         tasks: List[asyncio.Task[raft_pb2.RequestVoteResponse]] = []
-        for peer_node in self.peer_nodes.values():
-            tasks.append(asyncio.create_task(self._send_vote_request(request, peer_node)))
+        for peer_id, stub in self.peer_stubs.values():
+            tasks.append(asyncio.create_task(self._send_vote_request(request, stub, peer_id)))
 
         for task in asyncio.as_completed(tasks):
             try:
@@ -201,7 +195,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term})")
         
-        self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), False)
+        self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), is_periodic=False)
 
     async def _become_candidate(self) -> None:
         async with self.lock:
@@ -214,7 +208,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term})")
 
-            self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), False)
+            self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), is_periodic=False)
         asyncio.create_task(self._start_election(target_term))
 
     def _become_leader(self) -> None:
@@ -225,7 +219,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         print(f"DEBUG: Node {self.node_id} is LEADER (term = {self.current_term})")
 
         asyncio.create_task(self._send_heartbeats())
-        self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout, True)
+        self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout, is_periodic=True)
 
     # ========== RPC Handlers ==========
 
