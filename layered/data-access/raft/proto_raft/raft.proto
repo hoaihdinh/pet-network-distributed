@@ -34,8 +34,13 @@ message ClientRequest {
     string op = 1;
 }
 
+message ClientResponse {
+    bool success = 1;
+    string result = 2;
+}
+
 service RaftNode {
     rpc RequestVote (RequestVoteRequest) returns (RequestVoteResponse) {}
     rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
-    rpc ForwardClientRequest (ClientRequest) returns (LogEntry) {}
+    rpc ForwardClientRequest (ClientRequest) returns (ClientResponse) {}
 }

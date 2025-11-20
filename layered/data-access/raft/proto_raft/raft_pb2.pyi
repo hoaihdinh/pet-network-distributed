@@ -61,3 +61,11 @@ class ClientRequest(_message.Message):
     OP_FIELD_NUMBER: _ClassVar[int]
     op: str
     def __init__(self, op: _Optional[str] = ...) -> None: ...
+
+class ClientResponse(_message.Message):
+    __slots__ = ("success", "result")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    RESULT_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    result: str
+    def __init__(self, success: bool = ..., result: _Optional[str] = ...) -> None: ...

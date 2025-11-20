@@ -15,8 +15,6 @@ class RaftState(Enum):
 
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     def __init__(self, node_id: int, peers: List[str]):
-        self.DEBUG_ONLY_REPLICATED_DATA: int = 0
-
         self._heartbeat_timeout: float = 3 # in seconds
         self._get_next_election_timeout_lo: float = 6
         self._get_next_election_timeout_hi: float = 9
@@ -27,7 +25,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.voted_for: Optional[int] = None
         self.acks: int = 0
         self.commit_index: int = 0
-        self.sent_log_tag: int = 0
+        self.heartbeat_tag: int = 0 # Used to track which AppendEntriesResponse belong to which heartbeat
         self.log: List[raft_pb2.LogEntry] = []
         self.state: RaftState = RaftState.FOLLOWER
         self.timeout_task: Optional[asyncio.Task] = None
@@ -89,42 +87,46 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             pass
 
     async def _send_heartbeats(self):
+
+        # Create the AppendEntriesRequest
         async with self.lock:
-            # >>>>>>>>>> DEBUG
-            self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
-            # DEBUG <<<<<<<<<<
-
             self.acks = 1
-            self.sent_log_tag += 1
+            self.heartbeat_tag += 1
 
-            num_of_sent_uncommitted_entries = len(self.log) - self.commit_index
+            # Track how many uncommitted entries are sent during this heartbeat
+            num_of_uncommitted = len(self.log) - self.commit_index
 
             print(f"DEBUG: Node LEADER {self.node_id} log:")
             for l in self.log:
                 print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            print(f"DEBUG: c = {self.commit_index}, num_uncommit = {num_of_sent_uncommitted_entries}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+            print(f"DEBUG: c = {self.commit_index}, num_of_uncommitted = {num_of_uncommitted}")
 
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
                 leader_id=self.node_id,
                 log=self.log,
                 commit_index=self.commit_index,
-                tag=self.sent_log_tag
+                tag=self.heartbeat_tag
             )
 
+        # Send the AppendEntries RPC to all peer nodes
         tasks: List[asyncio.Task[raft_pb2.AppendEntriesResponse]] = []
         for peer_id, stub in self.peer_stubs.items():
             tasks.append(asyncio.create_task(self._send_append_entries(request, stub, peer_id)))
         
+        # As peer nodes respond, handle each AppendEntriesResponse
         for task in asyncio.as_completed(tasks):
             try:
                 response: raft_pb2.AppendEntriesResponse = await task
 
+                # Handle the AppendEntriesResponse
                 async with self.lock:
-                    if (self.state != RaftState.LEADER or response.tag != self.sent_log_tag):
+                    # If the node is no longer LEADER or 
+                    # If the AppendEntries response is stale, then stop handling responses
+                    if (self.state != RaftState.LEADER or response.tag != self.heartbeat_tag):
                         return
 
+                    # If term is outdated, then change state to FOLLOWER and stop handling responses
                     if (response.term > self.current_term):
                         self._become_follower(response.term)
                         return
@@ -132,13 +134,20 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                     if (response.term == self.current_term and response.ack_status):
                         self.acks += 1
                         if (self._has_majority()):
-                            print(f"DEBUG: Node {self.node_id} will now commit {num_of_sent_uncommitted_entries} entries")
+                            print(f"DEBUG: Node {self.node_id} will now commit {num_of_uncommitted} entries")
 
-                            for entry in self.log[self.commit_index:]:
-                                self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                            # Only commit the uncommitted logs that were sent by this heartbeat
+                            old_commit_index = self.commit_index
+                            self.commit_index += num_of_uncommitted
 
-                            self.commit_index += num_of_sent_uncommitted_entries
+                            for entry in self.log[old_commit_index:self.commit_index]:
+                                pass
+                            
+                            # Once the majority is obtained, then there is no need to handle other responses
                             return
+
+                    # Note that if the response.term < self.current_term, then the response is ignored and the loop continues
+
             except Exception as e:
                 pass
 
@@ -158,18 +167,24 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             candidate_id=self.node_id
         )
 
+        # Send the RequestVote RPC to all peer nodes
         tasks: List[asyncio.Task[raft_pb2.RequestVoteResponse]] = []
         for peer_id, stub in self.peer_stubs.values():
             tasks.append(asyncio.create_task(self._send_vote_request(request, stub, peer_id)))
 
+        # As peer nodes respond, handle each RequestVoteResponse
         for task in asyncio.as_completed(tasks):
             try:
                 response: raft_pb2.RequestVoteResponse = await task
 
+                # Handle the RequestVoteResponse
                 async with self.lock:
+                    # If the node is no longer a CANDIDATE or 
+                    # If the term for the election is outdated, then stop handling responses
                     if (self.state != RaftState.CANDIDATE or self.current_term != target_term):
                         return
 
+                    # If term is outdated, then change state to FOLLOWER and stop handling responses
                     if (response.term > target_term):
                         self._become_follower(response.term)
                         return
@@ -178,7 +193,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                         self.acks += 1
                         if (self._has_majority()):
                             self._become_leader()
+
+                            # Once the majority is obtained, then there is no need to handle other responses
                             return
+                    
+                    # Note that if the response.term < self.current_term, then the response is ignored and the loop continues
+
             except Exception as e:
                 pass
 
@@ -253,6 +273,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             term: int = self.current_term
             ack_status: bool = False
 
+            # Acknowledge the leader if the request.term >= self.current_term
             if(term <= request.term):
                 term = request.term
                 ack_status = True
@@ -260,9 +281,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 self._become_follower(term, leader_id=request.leader_id)
                 self.log = request.log
 
-                # for each log after self.commit_index, execute actions up to request.
+                # for each log after self.commit_index, execute actions up to request.commit_index
                 for entry in self.log[self.commit_index:request.commit_index]:
-                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    pass
 
                 self.commit_index = request.commit_index
 
@@ -270,7 +291,6 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             for l in self.log:
                 print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
             print(f"DEBUG: c = {self.commit_index}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,

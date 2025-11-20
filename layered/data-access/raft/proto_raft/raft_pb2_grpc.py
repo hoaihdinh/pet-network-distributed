@@ -47,7 +47,7 @@ class RaftNodeStub(object):
         self.ForwardClientRequest = channel.unary_unary(
                 '/RaftNode/ForwardClientRequest',
                 request_serializer=raft__pb2.ClientRequest.SerializeToString,
-                response_deserializer=raft__pb2.LogEntry.FromString,
+                response_deserializer=raft__pb2.ClientResponse.FromString,
                 _registered_method=True)
 
 
@@ -88,7 +88,7 @@ def add_RaftNodeServicer_to_server(servicer, server):
             'ForwardClientRequest': grpc.unary_unary_rpc_method_handler(
                     servicer.ForwardClientRequest,
                     request_deserializer=raft__pb2.ClientRequest.FromString,
-                    response_serializer=raft__pb2.LogEntry.SerializeToString,
+                    response_serializer=raft__pb2.ClientResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -171,7 +171,7 @@ class RaftNode(object):
             target,
             '/RaftNode/ForwardClientRequest',
             raft__pb2.ClientRequest.SerializeToString,
-            raft__pb2.LogEntry.FromString,
+            raft__pb2.ClientResponse.FromString,
             options,
             channel_credentials,
             insecure,

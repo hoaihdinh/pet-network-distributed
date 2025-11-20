@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\"3\n\x08LogEntry\x12\n\n\x02op\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\r\x12\r\n\x05index\x18\x03 \x01(\r\"8\n\x12RequestVoteRequest\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x14\n\x0c\x63\x61ndidate_id\x18\x02 \x01(\r\"9\n\x13RequestVoteResponse\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x14\n\x0cvote_granted\x18\x02 \x01(\x08\"r\n\x14\x41ppendEntriesRequest\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x11\n\tleader_id\x18\x02 \x01(\r\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12\x14\n\x0c\x63ommit_index\x18\x04 \x01(\r\x12\x0b\n\x03tag\x18\x05 \x01(\r\"F\n\x15\x41ppendEntriesResponse\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x12\n\nack_status\x18\x02 \x01(\x08\x12\x0b\n\x03tag\x18\x03 \x01(\r\"\x1b\n\rClientRequest\x12\n\n\x02op\x18\x01 \x01(\t2\xbd\x01\n\x08RaftNode\x12:\n\x0bRequestVote\x12\x13.RequestVoteRequest\x1a\x14.RequestVoteResponse\"\x00\x12@\n\rAppendEntries\x12\x15.AppendEntriesRequest\x1a\x16.AppendEntriesResponse\"\x00\x12\x33\n\x14\x46orwardClientRequest\x12\x0e.ClientRequest\x1a\t.LogEntry\"\x00\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\"3\n\x08LogEntry\x12\n\n\x02op\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\r\x12\r\n\x05index\x18\x03 \x01(\r\"8\n\x12RequestVoteRequest\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x14\n\x0c\x63\x61ndidate_id\x18\x02 \x01(\r\"9\n\x13RequestVoteResponse\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x14\n\x0cvote_granted\x18\x02 \x01(\x08\"r\n\x14\x41ppendEntriesRequest\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x11\n\tleader_id\x18\x02 \x01(\r\x12\x16\n\x03log\x18\x03 \x03(\x0b\x32\t.LogEntry\x12\x14\n\x0c\x63ommit_index\x18\x04 \x01(\r\x12\x0b\n\x03tag\x18\x05 \x01(\r\"F\n\x15\x41ppendEntriesResponse\x12\x0c\n\x04term\x18\x01 \x01(\r\x12\x12\n\nack_status\x18\x02 \x01(\x08\x12\x0b\n\x03tag\x18\x03 \x01(\r\"\x1b\n\rClientRequest\x12\n\n\x02op\x18\x01 \x01(\t\"1\n\x0e\x43lientResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0e\n\x06result\x18\x02 \x01(\t2\xc3\x01\n\x08RaftNode\x12:\n\x0bRequestVote\x12\x13.RequestVoteRequest\x1a\x14.RequestVoteResponse\"\x00\x12@\n\rAppendEntries\x12\x15.AppendEntriesRequest\x1a\x16.AppendEntriesResponse\"\x00\x12\x39\n\x14\x46orwardClientRequest\x12\x0e.ClientRequest\x1a\x0f.ClientResponse\"\x00\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -43,6 +43,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_APPENDENTRIESRESPONSE']._serialized_end=370
   _globals['_CLIENTREQUEST']._serialized_start=372
   _globals['_CLIENTREQUEST']._serialized_end=399
-  _globals['_RAFTNODE']._serialized_start=402
-  _globals['_RAFTNODE']._serialized_end=591
+  _globals['_CLIENTRESPONSE']._serialized_start=401
+  _globals['_CLIENTRESPONSE']._serialized_end=450
+  _globals['_RAFTNODE']._serialized_start=453
+  _globals['_RAFTNODE']._serialized_end=648
 # @@protoc_insertion_point(module_scope)
