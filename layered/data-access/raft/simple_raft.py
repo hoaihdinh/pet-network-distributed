@@ -2,6 +2,7 @@ import random
 import grpc
 import grpc.aio
 import asyncio
+import time
 
 from typing import Any, List, Coroutine, Optional
 from enum import Enum
@@ -27,11 +28,11 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.current_term: int = 0
         self.leader_id: Optional[int] = None
         self.voted_for: Optional[int] = None
-        self.heartbeat_acks: dict[int, int] = {}
         self.acks: int  = 0
         self.nacks: int = 0
         self.commit_index: int = 0
         self.heartbeat_tag: int = 0 # Used to track which AppendEntriesResponse belong to which heartbeat
+        self.heartbeat_acks: dict[int, int] = {}
         self.log: List[raft_pb2.LogEntry] = []
         self.state: RaftState = RaftState.FOLLOWER
         self.timeout_task: Optional[asyncio.Task] = None
@@ -39,6 +40,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         self.peers: List[str] = peers
         self.total_nodes: int = len(peers) + 1
+        self.peer_urls: dict[int, str] = {}
         self.peer_stubs: dict[int, raft_pb2_grpc.RaftNodeStub] = {}
 
     # ========== Bootup Method ==========
@@ -51,6 +53,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             peer_url = f"{host}:{peer_port}"
 
             channel = grpc.aio.insecure_channel(peer_url)
+            self.peer_urls[peer_id] = peer_url
             self.peer_stubs[peer_id] = raft_pb2_grpc.RaftNodeStub(channel)
 
         # Setup server to serve RPC requests
@@ -73,6 +76,11 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     def _has_majority(self, metric: int) -> bool:
         return metric > self.total_nodes // 2
+
+    async def _restart_peer_stub(self, peer_id: int) -> None:
+        async with self.lock:
+            channel = grpc.aio.insecure_channel(self.peer_urls[peer_id])
+            self.peer_stubs[peer_id] = raft_pb2_grpc.RaftNodeStub(channel)
 
     async def _run_oneshot_timer(self, task: Coroutine[Any, Any, None], delay: float) -> None:
         try:
@@ -119,7 +127,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 print(f"DEBUG: Node {self.node_id} will now commit entries")
 
                 for entry in self.log[self.commit_index:target_commit_index]:
-                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    # self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
                     pass
 
                 self.commit_index = target_commit_index
@@ -149,7 +157,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         except grpc.aio.AioRpcError as e:
             if (e.code() == grpc.StatusCode.UNAVAILABLE):
-                return
+                await self._restart_peer_stub(peer_id)
             else:
                 raise
         except asyncio.CancelledError:
@@ -158,10 +166,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             print("Exception occurred: ", e)
 
     async def _send_heartbeats(self) -> None:
+        print("DEBUG: HEARTBEAT TICK", time.time())
+
         # Create the AppendEntriesRequest
         async with self.lock:
             # >>>>>>>>>> DEBUG
-            self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
+            # self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
             # DEBUG <<<<<<<<<<
 
             self.heartbeat_tag += 1
@@ -174,12 +184,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             target_commit_index = len(self.log)
 
-            # >>> DEBUG <<< log print
-            print(f"DEBUG: Node LEADER {self.node_id} log:")
-            for l in self.log:
-                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            print(f"DEBUG: c = {self.commit_index}, target_commit_index = {target_commit_index}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+            # # >>> DEBUG <<< log print
+            # print(f"DEBUG: Node LEADER {self.node_id} log:")
+            # for l in self.log:
+            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            # print(f"DEBUG: c = {self.commit_index}, target_commit_index = {target_commit_index}")
+            # print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
@@ -226,6 +236,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             return await stub.RequestVote(request)
         except grpc.aio.AioRpcError as e:
             if (e.code() == grpc.StatusCode.UNAVAILABLE):
+                self._restart_peer_stub(peer_id)
                 return None
             else:
                 raise
@@ -353,17 +364,17 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
                 # for each log after self.commit_index, execute actions up to request.commit_index
                 for entry in self.log[self.commit_index:request.commit_index]:
-                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    # self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
                     pass
 
                 self.commit_index = request.commit_index
 
-            # >>> DEBUG <<< log print
-            print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
-            for l in self.log:
-                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            print(f"DEBUG: c = {self.commit_index}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+            # # >>> DEBUG <<< log print
+            # print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
+            # for l in self.log:
+            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            # print(f"DEBUG: c = {self.commit_index}")
+            # print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,
