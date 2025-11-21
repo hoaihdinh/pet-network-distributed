@@ -372,7 +372,6 @@ def health_check():
         }), 503
 
 if __name__ == '__main__':
-    print(os.getenv("PEERS").split(","))
     # Initialize database on startup
     try:
         init_database()

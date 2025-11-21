@@ -117,9 +117,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                                    request: raft_pb2.AppendEntriesRequest,
                                    stub: raft_pb2_grpc.RaftNodeStub,
                                    peer_id: int ) -> raft_pb2.AppendEntriesResponse | None:
-        print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}", flush=True)
-        
         try:
+            print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}", flush=True)
+            
             # timeout is used here because once the next heartbeat triggers, this set
             # of responses will be outdated and should be ignored
             return await stub.AppendEntries(request, timeout=self._heartbeat_timeout)
@@ -136,9 +136,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         # Create the AppendEntriesRequest
         async with self.lock:
             # >>>>>>>>>> DEBUG
-            self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
+            # self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
             # DEBUG <<<<<<<<<<
-
 
             self.acks = 1
             self.heartbeat_tag += 1
@@ -146,12 +145,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             # Track how many uncommitted entries are sent during this heartbeat
             num_of_pending_entries = len(self.log) - self.commit_index
 
-            # >>> DEBUG <<< log print
-            print(f"DEBUG: Node LEADER {self.node_id} log:")
-            for l in self.log:
-                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            print(f"DEBUG: c = {self.commit_index}, num_of_pending_entries = {num_of_pending_entries}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+            # # >>> DEBUG <<< log print
+            # print(f"DEBUG: Node LEADER {self.node_id} log:")
+            # for l in self.log:
+            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            # print(f"DEBUG: c = {self.commit_index}, num_of_pending_entries = {num_of_pending_entries}")
+            # print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
@@ -167,7 +166,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         
         completed_tasks, pending_tasks = await asyncio.wait(tasks, timeout=self._heartbeat_timeout)
 
-        # Cancel any pending responses as this heartbeat is now stale
+        # Cancel any pending responses as this set of AppendEntries is now stale
         for task in pending_tasks:
             task.cancel()
 
@@ -193,7 +192,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 self.commit_index += num_of_pending_entries
 
                 for entry in self.log[old_commit_index:self.commit_index]:
-                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    # self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    pass
 
     def _handle_vote_response(self,
                               response: raft_pb2.RequestVoteResponse,
@@ -223,8 +223,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                                  stub: raft_pb2_grpc.RaftNodeStub,
                                  peer_id: int,
                                  election_duration: float ) -> raft_pb2.RequestVoteResponse | None:
-        print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}", flush=True)
         try:
+            print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}", flush=True)
+            
             # timeout is used here because once the election ends, 
             # the RequestVotesResponses will become stale
             return await stub.RequestVote(request, timeout=election_duration)
@@ -288,9 +289,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
         
-        self._set_timeout_task(self._become_candidate_from_timer, self._get_next_election_timeout(), is_periodic=False)
+        self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), is_periodic=False)
 
-    async def _become_candidate_from_timer(self) -> None:
+    async def _become_candidate(self) -> None:
         async with self.lock:
             self.state = RaftState.CANDIDATE
             self.current_term += 1
@@ -357,16 +358,17 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
                 # for each log after self.commit_index, execute actions up to request.commit_index
                 for entry in self.log[self.commit_index:request.commit_index]:
-                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    # self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
+                    pass
 
                 self.commit_index = request.commit_index
 
-            # >>> DEBUG <<< log print
-            print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
-            for l in self.log:
-                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            print(f"DEBUG: c = {self.commit_index}")
-            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
+            # # >>> DEBUG <<< log print
+            # print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
+            # for l in self.log:
+            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            # print(f"DEBUG: c = {self.commit_index}")
+            # print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,
