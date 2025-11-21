@@ -15,6 +15,8 @@ class RaftState(Enum):
 
 class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     def __init__(self, node_id: int, port: int, peers: List[str]):
+        self.DEBUG_ONLY_REPLICATED_DATA: int = 0
+
         # these timeout values are in seconds
         self._heartbeat_timeout: float = 1
         self._election_timeout_lo: float = 1.5
@@ -57,7 +59,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         await server.start()
         print(f"Raft node {self.node_id} started on port {self.port}")
 
-        await self._become_follower(term=0) # Nodes start as followers
+        self._become_follower(term=0) # Nodes start as followers
         
         await server.wait_for_termination()
 
@@ -97,49 +99,30 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     # ========== Sending RPC Requests and Handling RPC Responses ==========
 
-    async def _handle_append_entries_response(self,
-                                              response: raft_pb2.AppendEntriesResponse,
-                                              num_of_pending_entries: int ) -> None:
-        async with self.lock:
-            # If the node is no longer LEADER or 
-            # If the AppendEntries response is stale, then stop handling responses
-            if (self.state != RaftState.LEADER or response.tag != self.heartbeat_tag):
-                return
+    def _handle_append_entries_response(self,
+                                        response: raft_pb2.AppendEntriesResponse) -> None:
+        # Ignore AppendEntries response if it is stale
+        if (response.term < self.current_term or response.tag != self.heartbeat_tag):
+            return
 
-            # If term is outdated, then change state to FOLLOWER and stop handling responses
-            if (response.term > self.current_term):
-                await self._become_follower(response.term)
-                return
+        # If term is outdated, then change state to FOLLOWER and stop handling responses
+        if (response.term > self.current_term):
+            self._become_follower(response.term)
+            return
 
-            if (response.term == self.current_term and response.ack_status):
-                self.acks += 1
-                if (self._has_majority_for()):
-                    print(f"DEBUG: Node {self.node_id} will now commit {num_of_pending_entries} entries")
-
-                    # Only commit the uncommitted logs that were sent by this heartbeat
-                    old_commit_index = self.commit_index
-                    self.commit_index += num_of_pending_entries
-
-                    for entry in self.log[old_commit_index:self.commit_index]:
-                        pass
-                    
-                    return # Once the majority is obtained, then there is no need to handle other responses
-
-            # Note that if the response.term < self.current_term, then the response is ignored and the loop continues
+        if (response.ack_status):
+            self.acks += 1
 
     async def _send_append_entries(self,
                                    request: raft_pb2.AppendEntriesRequest,
                                    stub: raft_pb2_grpc.RaftNodeStub,
-                                   peer_id: int,
-                                   num_of_pending_entries: int ) -> None:
+                                   peer_id: int ) -> raft_pb2.AppendEntriesResponse | None:
         print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}", flush=True)
         
         try:
             # timeout is used here because once the next heartbeat triggers, this set
             # of responses will be outdated and should be ignored
-            response = await stub.AppendEntries(request, timeout=self._heartbeat_timeout)
-
-            await self._handle_append_entries_response(response, num_of_pending_entries)
+            return await stub.AppendEntries(request, timeout=self._heartbeat_timeout)
         except grpc.aio.AioRpcError as e:
             if (e.code() == grpc.StatusCode.UNAVAILABLE or
                 e.code() == grpc.StatusCode.DEADLINE_EXCEEDED):
@@ -150,18 +133,25 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             print("Exception occurred: ", e)
 
     async def _send_heartbeats(self) -> None:
+        # Create the AppendEntriesRequest
         async with self.lock:
+            # >>>>>>>>>> DEBUG
+            self.log.append(raft_pb2.LogEntry(op=f"SET {random.randint(1, 100)}", term=self.current_term, index=len(self.log)))
+            # DEBUG <<<<<<<<<<
+
+
             self.acks = 1
             self.heartbeat_tag += 1
 
             # Track how many uncommitted entries are sent during this heartbeat
             num_of_pending_entries = len(self.log) - self.commit_index
 
-            # # >>> DEBUG <<< log print
-            # print(f"DEBUG: Node LEADER {self.node_id} log:")
-            # for l in self.log:
-            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            # print(f"DEBUG: c = {self.commit_index}, num_of_pending_entries = {num_of_pending_entries}")
+            # >>> DEBUG <<< log print
+            print(f"DEBUG: Node LEADER {self.node_id} log:")
+            for l in self.log:
+                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            print(f"DEBUG: c = {self.commit_index}, num_of_pending_entries = {num_of_pending_entries}")
+            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
@@ -172,61 +162,82 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             )
 
         # Send the AppendEntries RPC to all peer nodes
-        for peer_id, stub in self.peer_stubs.items():
-            asyncio.create_task(self._send_append_entries(request, stub, peer_id, num_of_pending_entries))
+        tasks = [asyncio.create_task(self._send_append_entries(request, stub, peer_id))
+                 for peer_id, stub in self.peer_stubs.items()]
+        
+        completed_tasks, pending_tasks = await asyncio.wait(tasks, timeout=self._heartbeat_timeout)
 
-    async def _handle_vote_response(self,
-                                    response: raft_pb2.RequestVoteResponse,
-                                    target_term: int ) -> None:
+        # Cancel any pending responses as this heartbeat is now stale
+        for task in pending_tasks:
+            task.cancel()
+
+        for task in completed_tasks:
+            try:
+                async with self.lock:
+                    # If node is no longer a LEADER, don't proccess reponses
+                    if (self.state != RaftState.LEADER):
+                        return
+
+                    response = task.result()
+                    if (response is not None):
+                        self._handle_append_entries_response(response)
+            except Exception as e:
+                print(f"Error processing AppendEntriesResponse: {e}")
+
         async with self.lock:
-            # Ignore responses that are outdated or if no longer a CANDIDATE node
-            if (self.state != RaftState.CANDIDATE or self.current_term != target_term):
-                return
+            if (self.state == RaftState.LEADER and self._has_majority_for()):
+                print(f"DEBUG: Node {self.node_id} will now commit {num_of_pending_entries} entries")
 
-            # If term is outdated, then change state to FOLLOWER and stop handling the response
-            if (response.term > target_term):
-                print(f"DEBUG: CANDIDANCY ENDS Node {self.node_id}: term outdated")
-                await self._become_follower(response.term)
-                return
+                # Only commit the uncommitted logs that were sent by this heartbeat
+                old_commit_index = self.commit_index
+                self.commit_index += num_of_pending_entries
 
-            if (response.term == target_term):
-                if (response.vote_granted):
-                    self.acks += 1
-                    print(f"DEBUG: FOR +1 Node {self.node_id}")
-                else:
-                    self.nacks += 1
-                    print(f"DEBUG: AGAINST +1 Node {self.node_id}")
+                for entry in self.log[old_commit_index:self.commit_index]:
+                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
 
-                if (self._has_majority_for()):
+    def _handle_vote_response(self,
+                              response: raft_pb2.RequestVoteResponse,
+                              target_term: int ) -> None:
+        # Ignore responses if stale or the votes are for an outdated term
+        if (response.term < self.current_term or self.current_term != target_term):
+            return
+
+        # If term is outdated, then change state to FOLLOWER and stop handling the response
+        if (response.term > target_term):
+            print(f"DEBUG: CANDIDANCY ENDS Node {self.node_id}: term outdated")
+            self._become_follower(response.term)
+            return
+
+        if (response.term == target_term):
+            if (not response.vote_granted):
+                self.nacks += 1
+                if (self._has_majority_against()):
                     print(f"DEBUG: CANDIDANCY ENDS Node {self.node_id}: {self.acks} for / {self.nacks} against")
-                    self._become_leader()
-                elif (self._has_majority_against()):
-                    print(f"DEBUG: CANDIDANCY ENDS Node {self.node_id}: {self.acks} for / {self.nacks} against")
-                    await self._become_follower()
-            
-            # Note that if the response.term < self.current_term, then the response is ignored and the loop continues
+                    self._become_follower(self.current_term)
+                    return
+            else:
+                self.acks += 1
 
     async def _send_vote_request(self,
                                  request: raft_pb2.RequestVoteRequest,
                                  stub: raft_pb2_grpc.RaftNodeStub,
                                  peer_id: int,
-                                 target_term: int,
-                                 election_duration: float ) -> None:
+                                 election_duration: float ) -> raft_pb2.RequestVoteResponse | None:
         print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}", flush=True)
         try:
             # timeout is used here because once the election ends, 
             # the RequestVotesResponses will become stale
-            response = await stub.RequestVote(request, timeout=election_duration)
-
-            await self._handle_vote_response(response, target_term)
+            return await stub.RequestVote(request, timeout=election_duration)
         except grpc.aio.AioRpcError as e:
             if (e.code() == grpc.StatusCode.UNAVAILABLE or
                 e.code() == grpc.StatusCode.DEADLINE_EXCEEDED):
                 return None
             else:
                 raise
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
-            print("Exception occurred: ", e)
+            print(f"Error sending RequestVote RPC: {e}")
 
     async def _start_election(self, target_term: int, election_duration: float) -> None:
         request = raft_pb2.RequestVoteRequest(
@@ -235,25 +246,51 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         )
 
         # Send the RequestVote RPC to all peer nodes
-        for peer_id, stub in self.peer_stubs.items():
-            asyncio.create_task(self._send_vote_request(request, stub, peer_id, target_term, election_duration))
+        tasks = [asyncio.create_task(self._send_vote_request(request, stub, peer_id, election_duration))
+                 for peer_id, stub in self.peer_stubs.items()]
+
+        completed_tasks, pending_tasks = await asyncio.wait(tasks, timeout=election_duration)
+
+        # Cancel any pending tasks as the voting period is over
+        for task in pending_tasks:
+            task.cancel()
+
+        for task in completed_tasks:
+            try:
+                async with self.lock:
+                    # If node is no longer a CANDIDATE, don't proccess votes
+                    if (self.state != RaftState.CANDIDATE):
+                        return
+
+                    response = task.result()
+                    if (response is not None):
+                        self._handle_vote_response(response, target_term)
+            except Exception as e:
+                print(f"Error processing RequestVoteResponse: {e}")
+
+        async with self.lock:
+            if (self.state == RaftState.CANDIDATE and self._has_majority_for()):
+                print(f"DEBUG: CANDIDANCY ENDS Node {self.node_id}: {self.acks} for / {self.nacks} against")
+                self._become_leader()
+            else:
+                self._become_follower(self.current_term)
 
     # ========== State Transition Methods ==========
 
-    async def _become_follower(self,
-                         term: Optional[int] = None,
+    def _become_follower(self,
+                         term: int,
                          leader_id: Optional[int] = None,
                          voted_for: Optional[int] = None ) -> None:
         self.state = RaftState.FOLLOWER
         self.leader_id = leader_id
         self.voted_for = voted_for
-        self.current_term = term if term is not None else self.current_term
+        self.current_term = term
 
-        print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term})")
+        print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
         
-        self._set_timeout_task(self._become_candidate, self._get_next_election_timeout(), is_periodic=False)
+        self._set_timeout_task(self._become_candidate_from_timer, self._get_next_election_timeout(), is_periodic=False)
 
-    async def _become_candidate(self) -> None:
+    async def _become_candidate_from_timer(self) -> None:
         async with self.lock:
             self.state = RaftState.CANDIDATE
             self.current_term += 1
@@ -264,9 +301,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             target_term = self.current_term
             election_duration = self._get_next_election_timeout()
 
-            print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term})")
-
-            self._set_timeout_task(self._become_follower, election_duration, is_periodic=False)
+            print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
+        
         asyncio.create_task(self._start_election(target_term, election_duration))
 
     def _become_leader(self) -> None:
@@ -274,7 +310,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.leader_id = self.node_id
         self.voted_for = None
 
-        print(f"DEBUG: Node {self.node_id} is LEADER (term = {self.current_term})")
+        print(f"DEBUG: Node {self.node_id} is LEADER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
 
         asyncio.create_task(self._send_heartbeats())
         self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout, is_periodic=True)
@@ -282,9 +318,9 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== RPC Handlers ==========
 
     async def RequestVote(self, request: raft_pb2.RequestVoteRequest, context) -> raft_pb2.RequestVoteResponse:
-        print(f"Node {self.node_id} runs RPC RequestVote to Node {request.candidate_id}", flush=True)
-        
         async with self.lock:
+            print(f"Node {self.node_id} t={self.current_term} on runs RPC RequestVote to Node {request.candidate_id} req.t={request.term}", flush=True)
+            
             term: int = self.current_term
             vote_granted: bool = False
 
@@ -297,7 +333,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 
                 term = request.term
                 vote_granted = True
-                await self._become_follower(term, voted_for=request.candidate_id)
+                self._become_follower(term, voted_for=request.candidate_id)
 
         return raft_pb2.RequestVoteResponse(
             term=term,
@@ -305,31 +341,32 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         )
 
     async def AppendEntries(self, request: raft_pb2.AppendEntriesRequest, context) -> raft_pb2.AppendEntriesResponse:
-        print(f"Node {self.node_id} runs RPC AppendEntries to Node {request.leader_id}", flush=True)
-
         async with self.lock:
+            print(f"Node {self.node_id} runs RPC AppendEntries to Node {request.leader_id}", flush=True)
+            
             term: int = self.current_term
             ack_status: bool = False
 
-            # Acknowledge the leader if the request.term >= self.current_term
+            # Acknowledge the leader if the self.current_term <= request.term
             if(term <= request.term):
                 term = request.term
                 ack_status = True
 
-                await self._become_follower(term, leader_id=request.leader_id)
+                self._become_follower(term, leader_id=request.leader_id)
                 self.log = request.log
 
                 # for each log after self.commit_index, execute actions up to request.commit_index
                 for entry in self.log[self.commit_index:request.commit_index]:
-                    pass
+                    self.DEBUG_ONLY_REPLICATED_DATA = int(entry.op.split(" ")[1])
 
                 self.commit_index = request.commit_index
 
-            # # >>> DEBUG <<< log print
-            # print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
-            # for l in self.log:
-            #     print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
-            # print(f"DEBUG: c = {self.commit_index}")
+            # >>> DEBUG <<< log print
+            print(f"DEBUG: Node FOLLOWER {self.node_id} log:")
+            for l in self.log:
+                print(f"DEBUG:\t<{l.op}, {l.term}, {l.index}>")
+            print(f"DEBUG: c = {self.commit_index}")
+            print(f"DEBUG: REPLICATED_DATA = {self.DEBUG_ONLY_REPLICATED_DATA}")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,
