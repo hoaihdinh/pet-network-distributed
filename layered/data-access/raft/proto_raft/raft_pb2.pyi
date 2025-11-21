@@ -33,28 +33,28 @@ class RequestVoteResponse(_message.Message):
     def __init__(self, term: _Optional[int] = ..., vote_granted: bool = ...) -> None: ...
 
 class AppendEntriesRequest(_message.Message):
-    __slots__ = ("term", "leader_id", "log", "commit_index", "tag")
+    __slots__ = ("term", "leader_id", "log", "commit_index", "heartbeat_tag")
     TERM_FIELD_NUMBER: _ClassVar[int]
     LEADER_ID_FIELD_NUMBER: _ClassVar[int]
     LOG_FIELD_NUMBER: _ClassVar[int]
     COMMIT_INDEX_FIELD_NUMBER: _ClassVar[int]
-    TAG_FIELD_NUMBER: _ClassVar[int]
+    HEARTBEAT_TAG_FIELD_NUMBER: _ClassVar[int]
     term: int
     leader_id: int
     log: _containers.RepeatedCompositeFieldContainer[LogEntry]
     commit_index: int
-    tag: int
-    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., log: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., commit_index: _Optional[int] = ..., tag: _Optional[int] = ...) -> None: ...
+    heartbeat_tag: int
+    def __init__(self, term: _Optional[int] = ..., leader_id: _Optional[int] = ..., log: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., commit_index: _Optional[int] = ..., heartbeat_tag: _Optional[int] = ...) -> None: ...
 
 class AppendEntriesResponse(_message.Message):
-    __slots__ = ("term", "ack_status", "tag")
+    __slots__ = ("term", "ack_status", "heartbeat_tag")
     TERM_FIELD_NUMBER: _ClassVar[int]
     ACK_STATUS_FIELD_NUMBER: _ClassVar[int]
-    TAG_FIELD_NUMBER: _ClassVar[int]
+    HEARTBEAT_TAG_FIELD_NUMBER: _ClassVar[int]
     term: int
     ack_status: bool
-    tag: int
-    def __init__(self, term: _Optional[int] = ..., ack_status: bool = ..., tag: _Optional[int] = ...) -> None: ...
+    heartbeat_tag: int
+    def __init__(self, term: _Optional[int] = ..., ack_status: bool = ..., heartbeat_tag: _Optional[int] = ...) -> None: ...
 
 class ClientRequest(_message.Message):
     __slots__ = ("op",)

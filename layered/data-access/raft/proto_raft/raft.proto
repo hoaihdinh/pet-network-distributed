@@ -21,13 +21,13 @@ message AppendEntriesRequest {
     uint32 leader_id = 2;
     repeated LogEntry log = 3;
     uint32 commit_index = 4;
-    uint32 tag = 5;
+    uint32 heartbeat_tag = 5;
 }
 
 message AppendEntriesResponse {
     uint32 term  = 1;
     bool ack_status = 2;
-    uint32 tag = 3;
+    uint32 heartbeat_tag = 3;
 }
 
 message ClientRequest {
