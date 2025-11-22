@@ -1,6 +1,7 @@
 # Lost-and-Found Pets Network - Distributed System
 
-A comprehensive distributed system for matching lost and found pets using two different architectural patterns: **Microservices with gRPC** and **Layered Architecture with REST**.
+Original Project: A comprehensive distributed system for matching lost and found pets using two different architectural patterns: **Microservices with gRPC** and **Layered Architecture with REST**.
+Project 3: The Layered Architecture was used as the base for the implementation of both Raft and 2PC Consensus Algorithms. Raft was implemented by Hoai Dinh. 2PC was implemented by Jennifer Hernandez.
 
 ## 📋 Table of Contents
 
@@ -25,77 +26,29 @@ This distributed system implements a pet lost-and-found matching service that:
 
 ---
 
-## 📝 Functional Requirements
-
+## 📝 Original Functional Requirements 
 ### FR1: Create Lost/Found Report
-- Submit detailed pet reports (type, breed, color, location, photos, contact)
-- Assign unique IDs with geospatial indexing
-- Support both "lost" and "found" report types
-
 ### FR2: Nearby Match Search
-- Query reports within specified radius (5km-50km)
-- Filter by pet characteristics
-- Return ranked results by similarity and proximity
-
 ### FR3: Real-Time Geo Alerts
-- Subscribe to alerts for specific geographic regions
-- Receive push notifications for matching reports
-- Support multiple concurrent subscriptions
-
 ### FR4: Distributed Match Query
-- Execute complex queries across multiple nodes
-- Aggregate results from different regions
-- Calculate match probability using similarity scoring
-
 ### FR5: Cross-Region Replication & Conflict Resolution
-- Replicate data across geographic regions
-- Handle concurrent updates with multiple strategies:
-  - **Last-Write-Wins (LWW)**: Choose most recent timestamp
-  - **Highest-Version**: Select highest version number
-  - **Manual Merge**: Combine non-conflicting fields
-- Maintain eventual consistency using vector clocks
+
 
 ---
 
 ## 🏗️ Architecture Comparison
 
-### Architecture 1: Microservices with gRPC
+### Architecture 1: Microservices with gRPC (not used for Project 3)
 
 **Communication**: gRPC (efficient, strongly-typed, supports streaming)
 
 **Services (5 Nodes)**:
 1. **Report Service** (Port 50051)
-   - Handles CRUD operations for reports
-   - PostgreSQL with PostGIS for geospatial data
-   
 2. **Matching Service** (Port 50052)
-   - Similarity matching algorithms
-   - Match score calculation
-   
 3. **Geo Service** (Port 50053)
-   - Geospatial indexing and queries
-   - Redis for fast geo-queries
-   
 4. **Alert Service** (Port 50054)
-   - Real-time notification subscriptions
-   - gRPC streaming for push alerts
-   
 5. **Replication Service** (Port 50055)
-   - Cross-region data synchronization
-   - Conflict detection and resolution
 
-**Advantages**:
-- Independent scaling of services
-- Technology heterogeneity (Go, Python, etc.)
-- Strong typing with Protocol Buffers
-- Efficient binary serialization
-- Built-in streaming support
-
-**Disadvantages**:
-- Higher operational complexity
-- More network hops
-- Service discovery challenges
-- Debugging across services
 
 ---
 
@@ -123,20 +76,6 @@ This distributed system implements a pet lost-and-found matching service that:
 5. **Cache Layer** (Port 8084)
    - Redis for hot data
    - Geospatial indexing
-
-**Advantages**:
-- Simpler to understand and debug
-- Clear separation of concerns
-- Easier testing (layer by layer)
-- Standard HTTP tools work everywhere
-- Lower learning curve
-
-**Disadvantages**:
-- Tight coupling between layers
-- All layers must use compatible technologies
-- Harder to scale individual components
-- Less efficient serialization (JSON)
-
 ---
 
 ## 📁 Project Structure
@@ -177,10 +116,17 @@ pet-network-distributed/
 │   │   ├── Dockerfile
 │   │   ├── app.py
 │   │   └── requirements.txt
-│   ├── data-access/
+│   ├── data-access/            # Not used in 2PC Layered
 │   │   ├── Dockerfile
 │   │   ├── app.py
 │   │   └── requirements.txt
+|   ├── data-access-2pc/        # Only used in 2PC Layered 
+|   |   ├── Dockerfile
+|   |   ├── app.py
+|   |   ├── data_access.proto
+|   |   ├── data_access_pb2_grpc.py
+|   |   ├── data_access_pb2.py
+|   |   └── requirements.txt
 │   ├── replication-layer/
 │   │   ├── Dockerfile
 │   │   ├── app.py
@@ -254,6 +200,12 @@ docker-compose -f docker-compose-layered-2pc.yml up --build -d
 
 # Check status
 docker-compose -f docker-compose-layered-2pc.yml ps
+
+# Check coordinator logs
+docker logs -f data-access-1
+
+# Check participant logs (where n could be 2,3,4,5)
+docker logs -f data-access-n
 
 # Stop
 docker-compose -f docker-compose-layered-2pc.yml down -v
@@ -336,97 +288,6 @@ Search              throughput_rps       43.25          35.12
 Match               avg_latency_ms       67.89          73.21          
 Match               p95_latency_ms       125.34         142.56         
 Match               throughput_rps       14.73          13.66          
-```
-
----
-
-## ⚖️ Trade-offs Analysis
-
-### Performance
-
-**Winner: Microservices (marginal)**
-- gRPC binary protocol is ~20-30% faster than JSON
-- But adds network latency from service hops
-- Layered architecture has fewer network calls
-
-**Key Finding**: For < 1000 RPS, difference is negligible
-
-### Scalability
-
-**Winner: Microservices (clear)**
-- Independent service scaling
-- Can scale geo-service separately for heavy query load
-- Layered must scale entire stack together
-
-**Recommendation**: Use microservices for >10K RPS
-
-### Development Complexity
-
-**Winner: Layered (significant)**
-- Easier to understand and debug
-- Simpler deployment (fewer moving parts)
-- Standard HTTP tools work everywhere
-
-**Consideration**: Team expertise matters more than architecture
-
-### Operational Complexity
-
-**Winner: Layered**
-- Fewer containers to manage
-- Simpler monitoring and logging
-- Easier troubleshooting
-
-**Microservices Overhead**:
-- Service discovery
-- Distributed tracing
-- More sophisticated monitoring
-
-### Fault Tolerance
-
-**Winner: Microservices**
-- Isolated failures (one service down ≠ system down)
-- Circuit breakers between services
-- Layered: Layer failure affects all above it
-
-### Technology Flexibility
-
-**Winner: Microservices**
-- Can use Go, Python, Java per service
-- Layered: Usually one language/framework
-
-### Data Consistency
-
-**Winner: Layered (simpler)**
-- Direct database access in data layer
-- Microservices need distributed transaction patterns
-- Both support eventual consistency for replication
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-**Microservices:**
-```env
-# Report Service
-DB_HOST=postgres-reports
-GRPC_PORT=50051
-REGION=us-east
-
-# Replication Service
-PEER_REGIONS=us-west:50055,eu-central:50055
-```
-
-**Layered:**
-```env
-# API Gateway
-BUSINESS_LOGIC_URL=http://business-logic:8081
-PORT=8080
-
-# Replication Layer
-PEER_URLS=http://peer-region-1:8083,http://peer-region-2:8083
-REGION=us-east
 ```
 
 ---
