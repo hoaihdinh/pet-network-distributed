@@ -2,11 +2,16 @@ import random
 import grpc
 import grpc.aio
 import asyncio
+import logging
 
 from typing import Any, List, Coroutine, Optional
 from enum import Enum
 from proto_raft import raft_pb2
 from proto_raft import raft_pb2_grpc
+
+# Logger configuration
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class RaftState(Enum):
     FOLLOWER = 1
@@ -67,9 +72,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         raft_pb2_grpc.add_RaftNodeServicer_to_server(self, server)
         server.add_insecure_port(f"[::]:{self.port}")
         await server.start()
-        print(f"STATUS: Raft node {self.node_id} started on port {self.port}")
-
         await self._wait_for_ready()
+        logger.info(f"STATUS: Raft node {self.node_id} started on port {self.port}")
 
         async with self.lock:
             if self.current_term == 0:
@@ -78,7 +82,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         await server.wait_for_termination()
 
     async def submit_client_command(self, op: str, params: str) -> Any:
-        print(f"DEBUG: Node {self.node_id} received client command: {op} {params}")
+        logger.debug(f"Node {self.node_id} received client command: {op} {params}")
         if (op not in self.op_to_function_map):
             raise Exception(f"Unsupported Raft operation: {op}")
 
@@ -118,7 +122,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             else:
                 raise
         except Exception as e:
-            print(f"Error executing client command: {e}")
+            logger.error(f"Error executing client command: {e}")
             raise
 
     # ========== Utility Methods ==========
@@ -127,7 +131,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         stub = raft_pb2_grpc.RaftNodeStub(grpc.aio.insecure_channel(f"localhost:{self.port}"))
         while True:
             try:
-                print(f"Node {self.node_id} sends RPC Ping to Node {self.node_id}", flush=True)
+                logger.info(f"Node {self.node_id} sends RPC Ping to Node {self.node_id}")
                 await stub.Ping(raft_pb2.PingRequest(id=self.node_id))
                 return
             except grpc.aio.AioRpcError:
@@ -147,7 +151,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     async def _run_oneshot_timer(self, task: Coroutine[Any, Any, None], delay: float) -> None:
         try:
             await asyncio.sleep(delay)
-            print(f"DEBUG: Node {self.node_id} TIMES UP")
+            logger.debug(f"Node {self.node_id} TIMES UP")
             await task()
         except asyncio.CancelledError:
             return
@@ -168,7 +172,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.timeout_task = asyncio.create_task(coroutine(task, delay))
 
     async def _execute_and_set_future(self, index: int, op: str, params: str) -> None:
-        print(f"DEBUG: Node {self.node_id} executing log entry {index}: {op} {params}")
+        logger.debug(f"Node {self.node_id} executing log entry {index}: {op} {params}")
 
         async with self.lock:
             future = self.pending_client_commands.pop(index, None)
@@ -185,7 +189,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     def _commit_and_execute_up_to(self, target_index: int) -> None:
         if(self.commit_index < target_index):
-            print(f"DEBUG: Node {self.node_id} will now commit entries up to index {target_index - 1}")
+            logger.debug(f"Node {self.node_id} will now commit entries up to index {target_index - 1}")
 
         # Execute operations up to target_index
         for entry in self.log[self.commit_index:target_index]:
@@ -211,7 +215,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
         election_timeout = self._get_next_election_timeout()
 
-        print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_timeout})")
+        logger.debug(f"Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_timeout:.1f})")
         
         self._set_timeout_task(self._become_candidate, election_timeout, is_periodic=False)
 
@@ -223,8 +227,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             election_timeout = self._get_next_election_timeout()
 
-            print(f"DEBUG: ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
-            print(f"DEBUG: Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_timeout})")
+            logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+            logger.debug(f"Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_timeout:.1f})")
             
             self._set_timeout_task(self._become_candidate, election_timeout, is_periodic=False)
 
@@ -239,7 +243,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             target_term = self.current_term
             election_duration = self._get_next_election_timeout()
 
-            print(f"DEBUG: Node {self.node_id} is CANDIDATE (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_duration})")
+            logger.debug(f"Node {self.node_id} is CANDIDATE (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_duration:.1f})")
         
             self._set_timeout_task(self._candidate_timeout_become_follower, election_duration, is_periodic=False)
 
@@ -250,7 +254,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         self.leader_id = self.node_id
         self.voted_for = None
 
-        print(f"DEBUG: Node {self.node_id} is LEADER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
+        logger.debug(f"Node {self.node_id} is LEADER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for})")
 
         asyncio.create_task(self._send_heartbeats()) # Initial heartbeat on becoming leader
         self._set_timeout_task(self._send_heartbeats, self._heartbeat_timeout, is_periodic=True)
@@ -263,7 +267,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                                  peer_id: int,
                                  election_duration: int ) -> Optional[raft_pb2.RequestVoteResponse]:
         try:
-            print(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}", flush=True)
+            logger.info(f"Node {self.node_id} sends RPC RequestVote to Node {peer_id}")
 
             response: raft_pb2.RequestVoteResponse = await stub.RequestVote(request, timeout=election_duration)
 
@@ -277,7 +281,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         except asyncio.CancelledError:
             return None
         except Exception as e:
-            print(f"Error sending RequestVote RPC: {e}")
+            logger.error(f"Error sending RequestVote RPC: {e}")
 
     async def _start_election(self, target_term: int, election_duration: float) -> None:
         request = raft_pb2.RequestVoteRequest(
@@ -297,7 +301,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                     if (not await self._handle_vote_response(response, target_term)):
                         return
             except Exception as e:
-                print(f"Error during election: {e}")
+                logger.info(f"Error during election: {e}")
 
     # ========== Handling RequestVote RPC Responses ==========
 
@@ -313,20 +317,20 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             # If own term is outdated, then change state to FOLLOWER and stop handling responses
             if (response.term > target_term):
-                print(f"DEBUG: ELECTION ENDS for Node {self.node_id}: term outdated")
+                logger.debug(f"ELECTION ENDS for Node {self.node_id}: term outdated")
                 self._become_follower(response.term)
                 return False
 
             if (response.vote_granted): 
                 self.acks += 1
                 if (self._has_majority(self.acks)):
-                    print(f"DEBUG: ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
                     self._become_leader()
                     return False
             else:
                 self.nacks += 1
                 if (self._has_majority(self.nacks)):
-                    print(f"DEBUG: ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
                     self._become_follower(self.current_term)
                     return False
 
@@ -340,7 +344,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                                    peer_id: int,
                                    target_commit_index: int) -> None:
         try:
-            print(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}", flush=True)
+            logger.info(f"Node {self.node_id} sends RPC AppendEntries to Node {peer_id}")
 
             response: raft_pb2.AppendEntriesResponse = await stub.AppendEntries(request)
 
@@ -352,7 +356,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             else:
                 raise
         except Exception as e:
-            print(f"Error sending AppendEntries RPC: {e}")
+            logger.error(f"Error sending AppendEntries RPC: {e}")
 
     async def _send_heartbeats(self) -> None:
         # Create the AppendEntriesRequest
@@ -417,7 +421,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                                              dest_stub: raft_pb2_grpc.RaftNodeStub,
                                              dest_node_id: int ) -> raft_pb2.ClientResponse:
         try:
-            print(f"Node {self.node_id} sends RPC ForwardClientRequest to Node {dest_node_id}", flush=True)
+            logger.info(f"Node {self.node_id} sends RPC ForwardClientRequest to Node {dest_node_id}")
 
             return await dest_stub.ForwardClientRequest(request)
         except grpc.aio.AioRpcError:
@@ -428,11 +432,11 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== RPC Handlers ==========
 
     async def Ping(self, request: raft_pb2.PingRequest, context) -> raft_pb2.PingResponse:
-        print(f"Node {self.node_id} runs RPC Ping from Node {request.id}", flush=True)
+        logger.info(f"Node {self.node_id} runs RPC Ping from Node {request.id}")
         return raft_pb2.PingResponse(success=True)
 
     async def RequestVote(self, request: raft_pb2.RequestVoteRequest, context) -> raft_pb2.RequestVoteResponse:
-        print(f"Node {self.node_id} runs RPC RequestVote called by Node {request.candidate_id}", flush=True)
+        logger.info(f"Node {self.node_id} runs RPC RequestVote called by Node {request.candidate_id}")
         
         async with self.lock:
             term: int = self.current_term
@@ -455,7 +459,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         )
 
     async def AppendEntries(self, request: raft_pb2.AppendEntriesRequest, context) -> raft_pb2.AppendEntriesResponse:
-        print(f"Node {self.node_id} runs RPC AppendEntries called by Node {request.leader_id}", flush=True)
+        logger.info(f"Node {self.node_id} runs RPC AppendEntries called by Node {request.leader_id}")
         
         async with self.lock: 
             term: int = self.current_term
@@ -478,7 +482,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         )
 
     async def ForwardClientRequest(self, request: raft_pb2.ClientRequest, context) -> raft_pb2.ClientResponse:
-        print(f"Node {self.node_id} runs RPC ForwardClientRequest called by Node {request.id}", flush=True)
+        logger.info(f"Node {self.node_id} runs RPC ForwardClientRequest called by Node {request.id}")
         
         try:
             result = await self.submit_client_command(request.op, request.params)

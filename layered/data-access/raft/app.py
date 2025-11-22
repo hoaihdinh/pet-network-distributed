@@ -19,7 +19,10 @@ def run_flask_app():
     app.run(host='0.0.0.0', port=port, debug=False)
 
 # Logger configuration
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 # Database configuration
