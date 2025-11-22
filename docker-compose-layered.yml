@@ -47,7 +47,7 @@ services:
   # Node 3: Data Access Layer - Port 8082
   data-access:
     build:
-      context: ./layered/data-access
+      context: ./layered/data-access/basic
       dockerfile: Dockerfile
     container_name: data-access
     ports:

@@ -21,7 +21,7 @@ def run_flask_app():
 # Logger configuration
 logging.basicConfig(
     level=logging.INFO,
-    format="%(levelname)s %(name)s: %(message)s",
+    format="%(levelname)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 

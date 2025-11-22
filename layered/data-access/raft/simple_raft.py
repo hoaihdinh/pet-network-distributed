@@ -11,7 +11,7 @@ from proto_raft import raft_pb2_grpc
 
 # Logger configuration
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 class RaftState(Enum):
     FOLLOWER = 1
