@@ -57,15 +57,33 @@ class AppendEntriesResponse(_message.Message):
     def __init__(self, term: _Optional[int] = ..., ack_status: bool = ..., heartbeat_tag: _Optional[int] = ...) -> None: ...
 
 class ClientRequest(_message.Message):
-    __slots__ = ("op",)
+    __slots__ = ("id", "op", "params")
+    ID_FIELD_NUMBER: _ClassVar[int]
     OP_FIELD_NUMBER: _ClassVar[int]
+    PARAMS_FIELD_NUMBER: _ClassVar[int]
+    id: int
     op: str
-    def __init__(self, op: _Optional[str] = ...) -> None: ...
+    params: str
+    def __init__(self, id: _Optional[int] = ..., op: _Optional[str] = ..., params: _Optional[str] = ...) -> None: ...
 
 class ClientResponse(_message.Message):
-    __slots__ = ("success", "result")
+    __slots__ = ("success", "result", "error_message")
     SUCCESS_FIELD_NUMBER: _ClassVar[int]
     RESULT_FIELD_NUMBER: _ClassVar[int]
+    ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
     success: bool
     result: str
-    def __init__(self, success: bool = ..., result: _Optional[str] = ...) -> None: ...
+    error_message: str
+    def __init__(self, success: bool = ..., result: _Optional[str] = ..., error_message: _Optional[str] = ...) -> None: ...
+
+class PingRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: int
+    def __init__(self, id: _Optional[int] = ...) -> None: ...
+
+class PingResponse(_message.Message):
+    __slots__ = ("success",)
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    def __init__(self, success: bool = ...) -> None: ...

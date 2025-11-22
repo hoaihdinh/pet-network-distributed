@@ -22,19 +22,6 @@ def run_flask_app():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Raft Node configuration
-raft_node = simple_raft.RaftNode(
-    node_id=int(os.getenv("NODE_ID")),
-    port=int(os.getenv("GRPC_PORT")),
-    peers=os.getenv("PEERS").split(",")
-)
-
-async def run_raft_node():
-    try:
-        await raft_node.start()
-    except Exception as e:
-        logger.error(f"Raft server crashed: {e}")
-
 # Database configuration
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'postgres-layered'),
@@ -103,19 +90,53 @@ def init_database():
             
             logger.info("Database initialized successfully")
 
+# Raft Node configuration
+async def create_report_task(query: str) -> int:
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+    return 201
+
+async def update_report_task(query: str) -> int:
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            if cur.rowcount == 0:
+                return 404
+    return 200
+
+raft_loop = asyncio.new_event_loop()
+
+raft_node = simple_raft.RaftNode(
+    node_id=int(os.getenv("NODE_ID")),
+    port=int(os.getenv("GRPC_PORT")),
+    peers=os.getenv("PEERS").split(","),
+    op_to_function_map={
+        "[LEADER]CREATE_REPORT": create_report_task,
+        "[LEADER]UPDATE_REPORT": update_report_task,
+    }
+)
+
+async def run_raft_node():
+    try:
+        await raft_node.start()
+    except Exception as e:
+        logger.error(f"Raft server crashed: {e}")
+
 # Flask endpoints
 @app.route('/reports', methods=['POST'])
 def create_report():
     """Create a new report"""
     try:
         data = request.get_json()
-        
+
         # Generate ID if not provided
         report_id = data.get('id', str(uuid.uuid4()))
         
+        # Construct the operation to be submitted to Raft
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                query = cur.mogrify("""
                     INSERT INTO reports (
                         id, type, pet_type, breed, color,
                         latitude, longitude, address,
@@ -139,13 +160,18 @@ def create_report():
                     data.get('contact_info'),
                     data.get('region'),
                     data.get('version', 1)
-                ))
-        
+                )).decode('utf-8')
+
+        status_code = asyncio.run_coroutine_threadsafe(
+            raft_node.submit_client_command("[LEADER]CREATE_REPORT", query),
+            raft_loop
+        ).result()
+
         # Return created report
         return jsonify({
             'id': report_id,
             **data
-        }), 201
+        }), status_code
     
     except Exception as e:
         logger.error(f"Error creating report: {e}")
@@ -192,12 +218,13 @@ def update_report(report_id):
     try:
         data = request.get_json()
         
+        # Construct the operation to be submitted to Raft
         with get_db_connection() as conn:
             with conn.cursor() as cur:
                 # Increment version
                 new_version = data.get('version', 1) + 1
                 
-                cur.execute("""
+                query = cur.mogrify("""
                     UPDATE reports
                     SET type = %s, pet_type = %s, breed = %s, color = %s,
                         latitude = %s, longitude = %s, address = %s,
@@ -219,13 +246,19 @@ def update_report(report_id):
                     data.get('contact_info'),
                     new_version,
                     report_id
-                ))
-                
-                if cur.rowcount == 0:
-                    return jsonify({'error': 'Report not found'}), 404
+                )).decode('utf-8')
+        
+        status_code = asyncio.run_coroutine_threadsafe(
+            raft_node.submit_client_command("[LEADER]UPDATE_REPORT", query),
+            raft_loop
+        ).result()
+
+        if status_code == 500:
+            raise Exception("Failed to update report via Raft")
+        elif status_code == 404:
+            return jsonify({'error': 'Report not found'}), 404
         
         return jsonify({'success': True, 'version': new_version}), 200
-    
     except Exception as e:
         logger.error(f"Error updating report: {e}")
         return jsonify({'error': str(e)}), 500
@@ -386,5 +419,6 @@ if __name__ == '__main__':
     )
     flask_thread.start()
 
-    asyncio.run(run_raft_node())
+    asyncio.set_event_loop(raft_loop)
+    raft_loop.run_until_complete(run_raft_node())
     

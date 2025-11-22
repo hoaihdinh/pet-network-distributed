@@ -49,6 +49,11 @@ class RaftNodeStub(object):
                 request_serializer=raft__pb2.ClientRequest.SerializeToString,
                 response_deserializer=raft__pb2.ClientResponse.FromString,
                 _registered_method=True)
+        self.Ping = channel.unary_unary(
+                '/RaftNode/Ping',
+                request_serializer=raft__pb2.PingRequest.SerializeToString,
+                response_deserializer=raft__pb2.PingResponse.FromString,
+                _registered_method=True)
 
 
 class RaftNodeServicer(object):
@@ -72,6 +77,12 @@ class RaftNodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Ping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RaftNodeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -89,6 +100,11 @@ def add_RaftNodeServicer_to_server(servicer, server):
                     servicer.ForwardClientRequest,
                     request_deserializer=raft__pb2.ClientRequest.FromString,
                     response_serializer=raft__pb2.ClientResponse.SerializeToString,
+            ),
+            'Ping': grpc.unary_unary_rpc_method_handler(
+                    servicer.Ping,
+                    request_deserializer=raft__pb2.PingRequest.FromString,
+                    response_serializer=raft__pb2.PingResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -172,6 +188,33 @@ class RaftNode(object):
             '/RaftNode/ForwardClientRequest',
             raft__pb2.ClientRequest.SerializeToString,
             raft__pb2.ClientResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Ping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/RaftNode/Ping',
+            raft__pb2.PingRequest.SerializeToString,
+            raft__pb2.PingResponse.FromString,
             options,
             channel_credentials,
             insecure,
