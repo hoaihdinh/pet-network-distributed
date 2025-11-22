@@ -2,82 +2,131 @@ version: "3.8"
 
 services:
   data-access-1:
-      build:
-        context: ./layered/data-access/raft
-        dockerfile: Dockerfile
-      container_name: data-access-1
-      ports:
-        - "8181:8181"
-        - "50051:50051"
-      environment:
-        SERVICE_NAME: data-access-1
-        DB_HOST: postgres-layered
-        DB_PORT: 5432
-        DB_NAME: pet_reports
-        DB_USER: petuser
-        DB_PASSWORD: petpass
-        PORT: 8181
-        NODE_ID: 1
-        GRPC_PORT: 50051
-        PEERS: "2:data-access-2:50052,3:data-access-3:50053"
-      depends_on:
-        - postgres-layered
-      networks:
-        - pet-network-layered
-      restart: unless-stopped
+    build:
+      context: ./layered/data-access/raft
+      dockerfile: Dockerfile
+    container_name: data-access-1
+    ports:
+      - "8181:8181"
+      - "50051:50051"
+    environment:
+      SERVICE_NAME: data-access-1
+      DB_HOST: postgres-layered
+      DB_PORT: 5432
+      DB_NAME: pet_reports
+      DB_USER: petuser
+      DB_PASSWORD: petpass
+      PORT: 8181
+      NODE_ID: 1
+      GRPC_PORT: 50051
+      PEERS: "2:data-access-2:50052,3:data-access-3:50053,4:data-access-4:50054,5:data-access-5:50055"
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
 
   data-access-2:
-      build:
-        context: ./layered/data-access/raft
-        dockerfile: Dockerfile
-      container_name: data-access-2
-      ports:
-        - "8182:8182"
-        - "50052:50052"
-      environment:
-        SERVICE_NAME: data-access-2
-        DB_HOST: postgres-layered
-        DB_PORT: 5432
-        DB_NAME: pet_reports
-        DB_USER: petuser
-        DB_PASSWORD: petpass
-        PORT: 8182
-        NODE_ID: 2
-        GRPC_PORT: 50052
-        PEERS: "1:data-access-1:50051,3:data-access-3:50053"
-      depends_on:
-        - postgres-layered
-      networks:
-        - pet-network-layered
-      restart: unless-stopped
-  
-  data-access-3:
-      build:
-        context: ./layered/data-access/raft
-        dockerfile: Dockerfile
-      container_name: data-access-3
-      ports:
-        - "8183:8183"
-        - "50053:50053"
-      environment:
-        SERVICE_NAME: data-access-3
-        DB_HOST: postgres-layered
-        DB_PORT: 5432
-        DB_NAME: pet_reports
-        DB_USER: petuser
-        DB_PASSWORD: petpass
-        PORT: 8183
-        NODE_ID: 3
-        GRPC_PORT: 50053
-        PEERS: "1:data-access-1:50051,2:data-access-2:50052"
-      depends_on:
-        - postgres-layered
-      networks:
-        - pet-network-layered
-      restart: unless-stopped
+    build:
+      context: ./layered/data-access/raft
+      dockerfile: Dockerfile
+    container_name: data-access-2
+    ports:
+      - "8182:8182"
+      - "50052:50052"
+    environment:
+      SERVICE_NAME: data-access-2
+      DB_HOST: postgres-layered
+      DB_PORT: 5432
+      DB_NAME: pet_reports
+      DB_USER: petuser
+      DB_PASSWORD: petpass
+      PORT: 8182
+      NODE_ID: 2
+      GRPC_PORT: 50052
+      PEERS: "1:data-access-1:50051,3:data-access-3:50053,4:data-access-4:50054,5:data-access-5:50055"
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
 
-  
-  # Supporting Service: PostgreSQL with PostGIS
+  data-access-3:
+    build:
+      context: ./layered/data-access/raft
+      dockerfile: Dockerfile
+    container_name: data-access-3
+    ports:
+      - "8183:8183"
+      - "50053:50053"
+    environment:
+      SERVICE_NAME: data-access-3
+      DB_HOST: postgres-layered
+      DB_PORT: 5432
+      DB_NAME: pet_reports
+      DB_USER: petuser
+      DB_PASSWORD: petpass
+      PORT: 8183
+      NODE_ID: 3
+      GRPC_PORT: 50053
+      PEERS: "1:data-access-1:50051,2:data-access-2:50052,4:data-access-4:50054,5:data-access-5:50055"
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  data-access-4:
+    build:
+      context: ./layered/data-access/raft
+      dockerfile: Dockerfile
+    container_name: data-access-4
+    ports:
+      - "8184:8184"
+      - "50054:50054"
+    environment:
+      SERVICE_NAME: data-access-4
+      DB_HOST: postgres-layered
+      DB_PORT: 5432
+      DB_NAME: pet_reports
+      DB_USER: petuser
+      DB_PASSWORD: petpass
+      PORT: 8184
+      NODE_ID: 4
+      GRPC_PORT: 50054
+      PEERS: "1:data-access-1:50051,2:data-access-2:50052,3:data-access-3:50053,5:data-access-5:50055"
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  data-access-5:
+    build:
+      context: ./layered/data-access/raft
+      dockerfile: Dockerfile
+    container_name: data-access-5
+    ports:
+      - "8185:8185"
+      - "50055:50055"
+    environment:
+      SERVICE_NAME: data-access-5
+      DB_HOST: postgres-layered
+      DB_PORT: 5432
+      DB_NAME: pet_reports
+      DB_USER: petuser
+      DB_PASSWORD: petpass
+      PORT: 8185
+      NODE_ID: 5
+      GRPC_PORT: 50055
+      PEERS: "1:data-access-1:50051,2:data-access-2:50052,3:data-access-3:50053,4:data-access-4:50054"
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  # PostgreSQL with PostGIS
   postgres-layered:
     image: postgis/postgis:15-3.3
     container_name: postgres-layered
