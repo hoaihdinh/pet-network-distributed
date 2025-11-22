@@ -1,6 +1,7 @@
 # Lost-and-Found Pets Network - Distributed System
 
 Original Project: A comprehensive distributed system for matching lost and found pets using two different architectural patterns: **Microservices with gRPC** and **Layered Architecture with REST**.
+
 Project 3: The Layered Architecture was used as the base for the implementation of both Raft and 2PC Consensus Algorithms. Raft was implemented by Hoai Dinh. 2PC was implemented by Jennifer Hernandez.
 
 ## 📋 Table of Contents
