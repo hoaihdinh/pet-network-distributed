@@ -208,6 +208,7 @@ pet-network-distributed/
 - Go 1.21+ (for microservices)
 
 ### Quick Start
+There are three ways to start the program based on what services are desired. The options are Microservices Architecture, Layered Arch, or Layered with 2PC Arch. Each have their own compose.yml file and therefore have different start commands. You cannot start more than one at a time.
 
 #### 1. Clone Repository
 ```bash
@@ -215,7 +216,7 @@ git clone https://github.com/hrb-ab/pet-network-distributed.git
 cd pet-network-distributed
 ```
 
-#### 2. Start Microservices Architecture
+#### 1. Microservices Architecture
 ```bash
 # Generate gRPC code from proto files
 cd microservices/proto
@@ -227,19 +228,7 @@ docker-compose -f docker-compose-microservices.yml up --build -d
 
 # Check status
 docker-compose -f docker-compose-microservices.yml ps
-```
-
-#### 3. Start Layered Architecture
-```bash
-docker-compose -f docker-compose-layered.yml up --build -d
-
-# Check status
-docker-compose -f docker-compose-layered.yml ps
-```
-
-#### 4. Verify Services
-
-**Microservices:**
+``` 
 ```bash
 # Check Report Service
 grpcurl -plaintext localhost:50051 list
@@ -248,7 +237,29 @@ grpcurl -plaintext localhost:50051 list
 curl http://localhost:50051/health
 ```
 
-**Layered:**
+#### 2. Layered Architecture
+```bash
+docker-compose -f docker-compose-layered.yml up --build -d
+
+# Check status
+docker-compose -f docker-compose-layered.yml ps
+
+# Stop
+docker-compose -f docker-compose-layered.yml down -v
+```
+
+#### 3. Layered with 2PC Architecture
+```bash
+docker-compose -f docker-compose-layered-2pc.yml up --build -d
+
+# Check status
+docker-compose -f docker-compose-layered-2pc.yml ps
+
+# Stop
+docker-compose -f docker-compose-layered-2pc.yml down -v
+```
+
+#### Layered Verifying & Usage (both 2PC and original)
 ```bash
 # Check API Gateway
 curl http://localhost:8080/health
