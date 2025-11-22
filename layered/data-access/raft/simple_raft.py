@@ -85,6 +85,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         async with self.lock:
             is_leader = (self.state == RaftState.LEADER)
             leader_id = self.leader_id
+            leader_stub = self.peer_stubs[leader_id] if leader_id else None
 
             if (is_leader):
                 new_log_entry = raft_pb2.LogEntry(
@@ -103,7 +104,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             elif (leader_id):
                 # If this node knows the leader, then forward the command to the leader
                 request = raft_pb2.ClientRequest(id=self.node_id, op=op, params=params)
-                response = await self._send_forwarded_client_request(request, leader_id)
+                response = await self._send_forwarded_client_request(request, leader_stub, leader_id)
                 
                 if (not response.success):
                     raise Exception(response.error_message)
@@ -252,6 +253,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             else:
                 raise
         except asyncio.CancelledError:
+            await self._restart_peer_stub(peer_id)
             return None
         except Exception as e:
             print(f"Error sending RequestVote RPC: {e}")
@@ -262,9 +264,10 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             candidate_id=self.node_id
         )
 
-        # Send the RequestVote RPC to all peer nodes
-        tasks = [asyncio.create_task(self._send_vote_request(request, stub, peer_id))
-                 for peer_id, stub in self.peer_stubs.items()]
+        async with self.lock:
+            # Send the RequestVote RPC to all peer nodes
+            tasks = [asyncio.create_task(self._send_vote_request(request, stub, peer_id))
+                    for peer_id, stub in self.peer_stubs.items()]
 
         # Gather vote results after election_duration
         completed_tasks, pending_tasks = await asyncio.wait(tasks, timeout=election_duration)
@@ -376,9 +379,10 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 heartbeat_tag=self.heartbeat_tag
             )
 
-        # Send the AppendEntries RPC to all peer nodes
-        for peer_id, stub in self.peer_stubs.items():
-            asyncio.create_task(self._send_append_entries(request, stub, peer_id, target_commit_index))
+        async with self.lock:
+            # Send the AppendEntries RPC to all peer nodes
+            for peer_id, stub in self.peer_stubs.items():
+                asyncio.create_task(self._send_append_entries(request, stub, peer_id, target_commit_index))
 
     # ========== Handling AppendEntries RPC Responses ==========
 
@@ -408,11 +412,12 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
     async def _send_forwarded_client_request(self,
                                              request: raft_pb2.ClientRequest,
+                                             dest_stub: raft_pb2_grpc.RaftNodeStub,
                                              dest_node_id: int ) -> raft_pb2.ClientResponse:
         try:
             print(f"Node {self.node_id} sends RPC ForwardClientRequest to Node {dest_node_id}", flush=True)
 
-            return await self.peer_stubs[dest_node_id].ForwardClientRequest(request)
+            return await dest_stub.ForwardClientRequest(request)
         except grpc.aio.AioRpcError as e:
             if (e.code() == grpc.StatusCode.UNAVAILABLE):
                 return None # Peer is unavailable, treat as no response
