@@ -301,7 +301,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                     if (not await self._handle_vote_response(response, target_term)):
                         return
             except Exception as e:
-                logger.info(f"Error during election: {e}")
+                logger.error(f"Error during election: {e}")
 
     # ========== Handling RequestVote RPC Responses ==========
 
@@ -432,7 +432,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== RPC Handlers ==========
 
     async def Ping(self, request: raft_pb2.PingRequest, context) -> raft_pb2.PingResponse:
-        logger.info(f"Node {self.node_id} runs RPC Ping from Node {request.id}")
+        logger.info(f"Node {self.node_id} runs RPC Ping called by Node {request.id}")
         return raft_pb2.PingResponse(success=True)
 
     async def RequestVote(self, request: raft_pb2.RequestVoteRequest, context) -> raft_pb2.RequestVoteResponse:
