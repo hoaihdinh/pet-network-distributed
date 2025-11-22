@@ -34,24 +34,53 @@ services:
       - "8081:8081"
     environment:
       - SERVICE_NAME=business-logic
-      - DATA_ACCESS_URL=http://data-access:8082
+      - DATA_ACCESS_URL=http://data-access-1:8082
       - CACHE_URL=http://cache-layer:8084
       - PORT=8081
     depends_on:
-      - data-access
+      - data-access-1
+      - data-access-2
+      - data-access-3
+      - data-access-4
+      - data-access-5
       - cache-layer
     networks:
       - pet-network-layered
     restart: unless-stopped
 
   # Node 3: Data Access Layer - Port 8082
-  data-access:
+  data-access-1:
     build:
-      context: ./layered/data-access
+      context: ./layered/data-access-2pc
       dockerfile: Dockerfile
-    container_name: data-access
+    container_name: data-access-1
     ports:
       - "8082:8082"
+    environment:
+      - COORDINATOR=1
+      - SERVICE_NAME=data-access
+      - DB_HOST=postgres-layered
+      - DB_PORT=5432
+      - DB_NAME=pet_reports
+      - DB_USER=petuser
+      - DB_PASSWORD=petpass
+      - PORT=8082
+      - GRPC_PORT=50051
+      - SELF_ID=data-access-1:50051
+      - DATA_ACCESS_REPLICAS=data-access-1:50051,data-access-2:50052,data-access-3:50053,data-access-4:50054,data-access-5:50055
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  data-access-2:
+    build:
+      context: ./layered/data-access-2pc
+      dockerfile: Dockerfile
+    container_name: data-access-2
+    ports:
+      - "8085:8082"
     environment:
       - SERVICE_NAME=data-access
       - DB_HOST=postgres-layered
@@ -60,11 +89,87 @@ services:
       - DB_USER=petuser
       - DB_PASSWORD=petpass
       - PORT=8082
+      - GRPC_PORT=50052
+      - SELF_ID=data-access-2:50052
+      - DATA_ACCESS_REPLICAS=data-access-1:50051,data-access-2:50052,data-access-3:50053,data-access-4:50054,data-access-5:50055
     depends_on:
       - postgres-layered
     networks:
       - pet-network-layered
     restart: unless-stopped
+  
+  data-access-3:
+    build:
+      context: ./layered/data-access-2pc
+      dockerfile: Dockerfile
+    container_name: data-access-3
+    ports:
+      - "8086:8082"
+    environment:
+      - SERVICE_NAME=data-access
+      - DB_HOST=postgres-layered
+      - DB_PORT=5432
+      - DB_NAME=pet_reports
+      - DB_USER=petuser
+      - DB_PASSWORD=petpass
+      - PORT=8082
+      - GRPC_PORT=50053
+      - SELF_ID=data-access-3:50053
+      - DATA_ACCESS_REPLICAS=data-access-1:50051,data-access-2:50052,data-access-3:50053,data-access-4:50054,data-access-5:50055
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  data-access-4:
+    build:
+      context: ./layered/data-access-2pc
+      dockerfile: Dockerfile
+    container_name: data-access-4
+    ports:
+      - "8087:8082"
+    environment:
+      - SERVICE_NAME=data-access
+      - DB_HOST=postgres-layered
+      - DB_PORT=5432
+      - DB_NAME=pet_reports
+      - DB_USER=petuser
+      - DB_PASSWORD=petpass
+      - PORT=8082
+      - GRPC_PORT=50054
+      - SELF_ID=data-access-4:50054
+      - DATA_ACCESS_REPLICAS=data-access-1:50051,data-access-2:50052,data-access-3:50053,data-access-4:50054,data-access-5:50055
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+
+  data-access-5:
+    build:
+      context: ./layered/data-access-2pc
+      dockerfile: Dockerfile
+    container_name: data-access-5
+    ports:
+      - "8088:8082"
+    environment:
+      - SERVICE_NAME=data-access
+      - DB_HOST=postgres-layered
+      - DB_PORT=5432
+      - DB_NAME=pet_reports
+      - DB_USER=petuser
+      - DB_PASSWORD=petpass
+      - PORT=8082
+      - GRPC_PORT=50055
+      - SELF_ID=data-access-4:50055
+      - DATA_ACCESS_REPLICAS=data-access-1:50051,data-access-2:50052,data-access-3:50053,data-access-4:50054,data-access-5:50055
+    depends_on:
+      - postgres-layered
+    networks:
+      - pet-network-layered
+    restart: unless-stopped
+    
 
   # Node 4: Replication Layer - Port 8083
   replication-layer:
@@ -78,10 +183,13 @@ services:
       - SERVICE_NAME=replication-layer
       - DATA_ACCESS_URL=http://data-access:8082
       - REGION=us-east
-      - PEER_URLS=
       - PORT=8083
     depends_on:
-      - data-access
+      - data-access-1
+      - data-access-2
+      - data-access-3
+      - data-access-4
+      - data-access-5
     networks:
       - pet-network-layered
     restart: unless-stopped

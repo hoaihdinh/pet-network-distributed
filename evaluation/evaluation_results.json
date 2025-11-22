@@ -1,0 +1,119 @@
+[
+  {
+    "config": "Light Load",
+    "layered": {
+      "architecture": "Layered (REST)",
+      "create": {
+        "avg_latency_ms": 86.69378757476807,
+        "p50_latency_ms": 82.83805847167969,
+        "p95_latency_ms": 130.60126304626465,
+        "p99_latency_ms": 145.78221082687378,
+        "min_latency_ms": 51.58185958862305,
+        "max_latency_ms": 140.9153938293457,
+        "throughput_rps": 55.873826488242166,
+        "success_rate": 100.0,
+        "total_requests": 50
+      },
+      "search": {
+        "avg_latency_ms": 54.468793869018555,
+        "p50_latency_ms": 54.25071716308594,
+        "p95_latency_ms": 80.37326335906982,
+        "p99_latency_ms": 87.02020168304443,
+        "min_latency_ms": 21.44622802734375,
+        "max_latency_ms": 82.2906494140625,
+        "throughput_rps": 85.56283782019479,
+        "success_rate": 100.0,
+        "total_requests": 25
+      },
+      "match": {
+        "avg_latency_ms": 80.6313705444336,
+        "p50_latency_ms": 73.48465919494629,
+        "p95_latency_ms": 129.19464111328125,
+        "p99_latency_ms": 129.69253540039062,
+        "min_latency_ms": 49.47018623352051,
+        "max_latency_ms": 129.33826446533203,
+        "throughput_rps": 57.257684041307726,
+        "success_rate": 100.0,
+        "total_requests": 25
+      }
+    }
+  },
+  {
+    "config": "Medium Load",
+    "layered": {
+      "architecture": "Layered (REST)",
+      "create": {
+        "avg_latency_ms": 384.1179168224335,
+        "p50_latency_ms": 368.99733543395996,
+        "p95_latency_ms": 552.5954008102417,
+        "p99_latency_ms": 606.2133574485779,
+        "min_latency_ms": 164.01290893554688,
+        "max_latency_ms": 649.7774124145508,
+        "throughput_rps": 50.82784056168812,
+        "success_rate": 100.0,
+        "total_requests": 200
+      },
+      "search": {
+        "avg_latency_ms": 172.45148181915283,
+        "p50_latency_ms": 179.10969257354736,
+        "p95_latency_ms": 255.87482452392578,
+        "p99_latency_ms": 289.49052810668945,
+        "min_latency_ms": 56.116580963134766,
+        "max_latency_ms": 289.52741622924805,
+        "throughput_rps": 104.78689504257002,
+        "success_rate": 100.0,
+        "total_requests": 100
+      },
+      "match": {
+        "avg_latency_ms": 320.33539056777954,
+        "p50_latency_ms": 295.7186698913574,
+        "p95_latency_ms": 501.2672424316406,
+        "p99_latency_ms": 571.4584612846375,
+        "min_latency_ms": 87.07308769226074,
+        "max_latency_ms": 571.5785026550293,
+        "throughput_rps": 58.06766372260676,
+        "success_rate": 100.0,
+        "total_requests": 100
+      }
+    }
+  },
+  {
+    "config": "Heavy Load",
+    "layered": {
+      "architecture": "Layered (REST)",
+      "create": {
+        "avg_latency_ms": 902.9163842201233,
+        "p50_latency_ms": 908.7578058242798,
+        "p95_latency_ms": 1128.9505362510681,
+        "p99_latency_ms": 1190.1664090156555,
+        "min_latency_ms": 370.18513679504395,
+        "max_latency_ms": 1273.989200592041,
+        "throughput_rps": 53.167171050578396,
+        "success_rate": 100.0,
+        "total_requests": 500
+      },
+      "search": {
+        "avg_latency_ms": 345.76664543151855,
+        "p50_latency_ms": 361.2107038497925,
+        "p95_latency_ms": 446.8514084815979,
+        "p99_latency_ms": 466.3700222969055,
+        "min_latency_ms": 52.40488052368164,
+        "max_latency_ms": 469.8188304901123,
+        "throughput_rps": 124.4881190430935,
+        "success_rate": 100.0,
+        "total_requests": 250
+      },
+      "match": {
+        "avg_latency_ms": 795.2836427688599,
+        "p50_latency_ms": 758.1614255905151,
+        "p95_latency_ms": 1297.372543811798,
+        "p99_latency_ms": 1414.661853313446,
+        "min_latency_ms": 126.50895118713379,
+        "max_latency_ms": 1531.8772792816162,
+        "throughput_rps": 57.65039518584541,
+        "success_rate": 100.0,
+        "total_requests": 250
+      }
+    }
+  }
+]
