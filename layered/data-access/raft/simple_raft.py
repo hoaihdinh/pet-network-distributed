@@ -83,9 +83,10 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             raise Exception(f"Unsupported Raft operation: {op}")
 
         async with self.lock:
-            is_leader = (self.state == RaftState.LEADER)
+            # Snapshot of leader info to use outside lock
             leader_id = self.leader_id
-            leader_stub = self.peer_stubs[leader_id] if leader_id else None
+            leader_stub = self.peer_stubs.get(leader_id, None)
+            is_leader = (self.state == RaftState.LEADER)
 
             if (is_leader):
                 new_log_entry = raft_pb2.LogEntry(
