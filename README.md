@@ -131,7 +131,7 @@ pet-network-distributed/
 │   │   │   ├── data_access_pb2.py
 │   │   │   └── requirements.txt
 │   │   └── raft/               # Raft implementation
-│   │       ├── nginx/conf.d
+│   │       ├── nginx/conf.d/
 │   │       │   └── data-access.conf
 │   │       ├── proto_raft/
 │   │       │   ├── raft_pb2_grpc.py
