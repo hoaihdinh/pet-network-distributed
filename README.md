@@ -1,4 +1,4 @@
-# Lost-and-Found Pets Network - Distributed System
+# Lost-and-Found Pets Network with Consensus Algo - Distributed System
 
 Original Project: A comprehensive distributed system for matching lost and found pets using two different architectural patterns: **Microservices with gRPC** and **Layered Architecture with REST**.
 
@@ -12,7 +12,6 @@ Original Project: A comprehensive distributed system for matching lost and found
 - [Project Structure](#project-structure)
 - [Setup Instructions](#setup-instructions)
 - [Performance Evaluation](#performance-evaluation)
-- [Trade-offs Analysis](#trade-offs-analysis)
 
 ---
 
@@ -36,7 +35,7 @@ This distributed system implements a pet lost-and-found matching service that:
 
 ---
 
-## 🏗️ Architecture Comparison
+## 🏗️ Architectures
 
 ### Architecture 1: Microservices with gRPC (not used for Project 3)
 
@@ -64,7 +63,7 @@ This distributed system implements a pet lost-and-found matching service that:
    - Core matching algorithms
    - Business rule enforcement
    
-3. **Data Access Layer** (Port 8082)
+3. **Data Access Layer** (Port 8082)       << used for both Consensus Algorithms
    - Database abstraction
    - Query optimization
    
@@ -169,7 +168,7 @@ pet-network-distributed/
 - Go 1.21+ (for microservices)
 
 ### Quick Start
-There are three ways to start the program based on what services are desired. The options are Microservices Architecture, Layered Arch, or Layered with 2PC Arch. Each have their own compose.yml file and therefore have different start commands. You cannot start more than one at a time.
+The consensus algorithms were both implemented on the Layered Architecture. There are three versions of the Layered Architecture according to the type of consensus desired: None/Base, 2PC, or Raft. Each have their own compose.yml file and therefore have different start commands. You cannot start more than one at a time.
 
 #### 1. Clone Repository
 ```bash
@@ -177,28 +176,7 @@ git clone https://github.com/hrb-ab/pet-network-distributed.git
 cd pet-network-distributed
 ```
 
-#### 1. Microservices Architecture
-```bash
-# Generate gRPC code from proto files
-cd microservices/proto
-protoc --go_out=. --go-grpc_out=. pet_network.proto
-
-# Start all services
-cd ../..
-docker-compose -f docker-compose-microservices.yml up --build -d
-
-# Check status
-docker-compose -f docker-compose-microservices.yml ps
-``` 
-```bash
-# Check Report Service
-grpcurl -plaintext localhost:50051 list
-
-# Check health (if HTTP endpoint added)
-curl http://localhost:50051/health
-```
-
-#### 2. Layered Architecture
+#### 2. Layered Architecture (Base)
 ```bash
 docker-compose -f docker-compose-layered.yml up --build -d
 
@@ -209,7 +187,7 @@ docker-compose -f docker-compose-layered.yml ps
 docker-compose -f docker-compose-layered.yml down -v
 ```
 
-#### 3. Layered with 2PC Architecture
+#### 3. Layered Architecture with 2PC
 ```bash
 docker-compose -f docker-compose-layered-2pc.yml up --build -d
 
@@ -226,7 +204,12 @@ docker logs -f data-access-n
 docker-compose -f docker-compose-layered-2pc.yml down -v
 ```
 
-#### Layered Verifying & Usage (both 2PC and original)
+#### 4. Layered Architecture with Raft
+```bash
+# hoai put your tingz here
+```
+
+#### Layered Verifying & Usage (All Versions)
 ```bash
 # Check API Gateway
 curl http://localhost:8080/health
