@@ -2,7 +2,7 @@
 
 Original Project: A comprehensive distributed system for matching lost and found pets using two different architectural patterns: **Microservices with gRPC** and **Layered Architecture with REST**.
 
-Project 3: The Layered Architecture was used as the base for the implementation of both Raft and 2PC Consensus Algorithms. Raft was implemented by Hoai Dinh. 2PC was implemented by Jennifer Hernandez.
+**Project 3:** The Layered Architecture was used as the base for the implementation of both Raft and 2PC Consensus Algorithms. The layer targeted for both 2PC and Raft is the data-access layer. 2PC was implemented by Jennifer Hernandez. Raft was implemented by Hoai Dinh. 
 
 ## 📋 Table of Contents
 
@@ -34,7 +34,6 @@ This distributed system implements a pet lost-and-found matching service that:
 ### FR4: Distributed Match Query
 ### FR5: Cross-Region Replication & Conflict Resolution
 
-
 ---
 
 ## 🏗️ Architecture Comparison
@@ -49,7 +48,6 @@ This distributed system implements a pet lost-and-found matching service that:
 3. **Geo Service** (Port 50053)
 4. **Alert Service** (Port 50054)
 5. **Replication Service** (Port 50055)
-
 
 ---
 
@@ -77,6 +75,7 @@ This distributed system implements a pet lost-and-found matching service that:
 5. **Cache Layer** (Port 8084)
    - Redis for hot data
    - Geospatial indexing
+
 ---
 
 ## 📁 Project Structure
@@ -86,6 +85,8 @@ pet-network-distributed/
 ├── README.md
 ├── docker-compose-microservices.yml
 ├── docker-compose-layered.yml
+├── docker-compose-layered-2pc.yml
+├── docker-compose-layered-raft.yml
 │
 ├── microservices/              # Microservices Architecture
 │   ├── proto/
@@ -117,17 +118,30 @@ pet-network-distributed/
 │   │   ├── Dockerfile
 │   │   ├── app.py
 │   │   └── requirements.txt
-│   ├── data-access/            # Not used in 2PC Layered
-│   │   ├── Dockerfile
-│   │   ├── app.py
-│   │   └── requirements.txt
-|   ├── data-access-2pc/        # Only used in 2PC Layered 
-|   |   ├── Dockerfile
-|   |   ├── app.py
-|   |   ├── data_access.proto
-|   |   ├── data_access_pb2_grpc.py
-|   |   ├── data_access_pb2.py
-|   |   └── requirements.txt
+│   ├── data-access/
+│   │   ├── base/
+│   │   │   ├── Dockerfile
+│   │   │   ├── app.py
+│   │   │   └── requirements.txt
+│   │   ├── 2pc/                # 2PC implementation
+│   │   │   ├── Dockerfile
+│   │   │   ├── app.py
+│   │   │   ├── data_access.proto
+│   │   │   ├── data_access_pb2_grpc.py
+│   │   │   ├── data_access_pb2.py
+│   │   │   └── requirements.txt
+│   │   └── raft/               # Raft implementation
+│   │       ├── nginx/conf.d
+│   │       │   └── data-access.conf
+│   │       ├── proto_raft/
+│   │       │   ├── raft_pb2_grpc.py
+│   │       │   ├── raft_pb2.py
+│   │       │   ├── raft_pb2.pyi
+│   │       │   └── raft.proto
+│   │       ├── Dockerfile
+│   │       ├── app.py
+│   │       ├── simple_raft.py
+│   │       └── requirements.txt
 │   ├── replication-layer/
 │   │   ├── Dockerfile
 │   │   ├── app.py
