@@ -51,7 +51,7 @@ services:
   # Node 3: Data Access Layer - Port 8082
   data-access-1:
     build:
-      context: ./layered/data-access-2pc
+      context: ./layered/data-access/2pc
       dockerfile: Dockerfile
     container_name: data-access-1
     ports:
@@ -76,7 +76,7 @@ services:
 
   data-access-2:
     build:
-      context: ./layered/data-access-2pc
+      context: ./layered/data-access/2pc
       dockerfile: Dockerfile
     container_name: data-access-2
     ports:
@@ -100,7 +100,7 @@ services:
   
   data-access-3:
     build:
-      context: ./layered/data-access-2pc
+      context: ./layered/data-access/2pc
       dockerfile: Dockerfile
     container_name: data-access-3
     ports:
@@ -124,7 +124,7 @@ services:
 
   data-access-4:
     build:
-      context: ./layered/data-access-2pc
+      context: ./layered/data-access/2pc
       dockerfile: Dockerfile
     container_name: data-access-4
     ports:
@@ -148,7 +148,7 @@ services:
 
   data-access-5:
     build:
-      context: ./layered/data-access-2pc
+      context: ./layered/data-access/2pc
       dockerfile: Dockerfile
     container_name: data-access-5
     ports:
