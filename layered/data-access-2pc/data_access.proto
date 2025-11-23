@@ -1,0 +1,50 @@
+syntax = "proto3";
+package dataaccess;
+
+service TwoPC {
+  // Coordinator -> Participant
+  rpc VoteRequest(ReportTransaction) returns (VoteResponse);
+
+  // Coordinator -> Participant final decision
+  rpc GlobalCommit(TransactionId) returns (Ack);
+  rpc GlobalAbort(TransactionId) returns (Ack);
+}
+
+// A transaction wrapper
+message ReportTransaction {
+  string transaction_id = 1;
+  Report report = 2;
+}
+
+message Report {
+  string id = 1;
+  string type = 2;
+  string pet_type = 3;
+  string breed = 4;
+  string color = 5;
+  double latitude = 6;
+  double longitude = 7;
+  string address = 8;
+  int64 timestamp = 9;
+  string description = 10;
+  repeated string photo_urls = 11;
+  string contact_info = 12;
+  string region = 13;
+  int64 version = 14;
+}
+
+message VoteResponse {
+  enum Vote {
+    COMMIT = 0;
+    ABORT = 1;
+  }
+  Vote vote = 1;
+}
+
+message TransactionId {
+  string transaction_id = 1;
+}
+
+message Ack {
+  bool success = 1;
+}

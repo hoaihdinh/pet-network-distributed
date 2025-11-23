@@ -17,7 +17,7 @@ $pgReady = docker exec postgres-layered pg_isready -U petuser
 Write-Host $pgReady
 
 Write-Host "`nStep 5: Starting application services..." -ForegroundColor Yellow
-docker-compose -f docker-compose-layered.yml up -d
+docker-compose -f docker-compose-layered.yml up --build --no-cache -d
 
 Write-Host "`nStep 6: Waiting 45 seconds for initialization..." -ForegroundColor Yellow
 Start-Sleep -Seconds 45
