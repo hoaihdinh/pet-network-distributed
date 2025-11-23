@@ -57,6 +57,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== Raft Node APIs ==========
 
     async def start(self) -> None:
+        """Starts the Raft node by setting up client stubs and the gRPC server. Should be run within an asyncio event loop."""
         # Setup client stubs
         for peer_details in self.peers:
             id, host, peer_port = peer_details.split(":")
@@ -82,6 +83,10 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         await server.wait_for_termination()
 
     async def submit_client_command(self, op: str, params: str) -> Any:
+        """
+        Submits a client command to the Raft cluster and returns the result.
+        Must be executed within the asyncio event loop where the RaftNode.start() is running.
+        """
         logger.debug(f"Node {self.node_id} received client command: {op} {params}")
         if (op not in self.op_to_function_map):
             raise Exception(f"Unsupported Raft operation: {op}")
@@ -103,9 +108,13 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 self.pending_client_commands[new_log_entry.index] = result
                 self.log.append(new_log_entry)
 
+                logger.debug(f"Node {self.node_id} appended new log entry {new_log_entry.index}: {new_log_entry.op.split(':', 1)[0]}")
+
         try:
             if(is_leader):
-                return await result # If this node is the leader, just wait for the task to be committed and executed
+                result = await result # If this node is the leader, just wait for the task to be committed and executed
+                logger.debug(f"Leader Node {self.node_id} successfully executed client command: result={result}")
+                return result
             elif (leader_id):
                 # If this node knows the leader, then forward the command to the leader
                 request = raft_pb2.ClientRequest(id=self.node_id, op=op, params=params)
@@ -113,6 +122,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 
                 if (not response.success):
                     raise Exception(response.error_message)
+                logger.debug(f"Node {self.node_id} received result from leader Node {leader_id} for the client command: result={response.result}")
                 return response.result
             else:
                 raise Exception("Raft Leader node is unknown at the moment. Please try again later.")
@@ -128,6 +138,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
     # ========== Utility Methods ==========
 
     async def _wait_for_ready(self) -> None:
+        """Waits until the gRPC server is ready to accept requests by pinging itself."""
         stub = raft_pb2_grpc.RaftNodeStub(grpc.aio.insecure_channel(f"localhost:{self.port}"))
         while True:
             try:
@@ -144,6 +155,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         return metric > self.total_nodes // 2
 
     async def _restart_peer_stub(self, peer_id: int) -> None:
+        """Restarts the gRPC client stub for a given peer node to prevent stale connections."""
         async with self.lock:
             channel = grpc.aio.insecure_channel(self.peer_urls[peer_id])
             self.peer_stubs[peer_id] = raft_pb2_grpc.RaftNodeStub(channel)
@@ -165,11 +177,21 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 return
 
     def _set_timeout_task(self, task: Coroutine[Any, Any, None], delay: float, is_periodic: bool) -> None:
+        """Sets or resets the timeout task for the node, cancelling any existing timeout task."""
         if (self.timeout_task):
             self.timeout_task.cancel()
 
         coroutine = self._run_periodic_timer if is_periodic else self._run_oneshot_timer
         self.timeout_task = asyncio.create_task(coroutine(task, delay))
+
+    def _log_node_logs(self, message: str) -> None:
+        if (logger.level > logging.DEBUG):
+            return
+        commit_index_msg = f"(commit index = {self.commit_index - 1})" if self.commit_index > 0 else "(no committed entries)"
+        logger.debug(f"{message} - Log Entries {commit_index_msg}:")
+        for i, entry in enumerate(self.log):
+            commit_status = "(COMMITTED)" if i < self.commit_index else "(UNCOMMITTED)"
+            logger.debug(f"- Index {entry.index}: term={entry.term}, op={entry.op.split(':', 1)[0]} {commit_status}")
 
     async def _execute_and_set_future(self, index: int, op: str, params: str) -> None:
         logger.debug(f"Node {self.node_id} executing log entry {index}: {op} {params}")
@@ -227,7 +249,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             election_timeout = self._get_next_election_timeout()
 
-            logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+            logger.debug(f"ELECTION ENDS for Node {self.node_id}: timeout & insufficient acks ({self.acks} for / {self.total_nodes} total)")
             logger.debug(f"Node {self.node_id} is FOLLOWER (term = {self.current_term}, lead = {self.leader_id}, voted = {self.voted_for}, timeout = {election_timeout:.1f})")
             
             self._set_timeout_task(self._become_candidate, election_timeout, is_periodic=False)
@@ -324,13 +346,13 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
             if (response.vote_granted): 
                 self.acks += 1
                 if (self._has_majority(self.acks)):
-                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: majority vote win ({self.acks} for / {self.total_nodes} total)")
                     self._become_leader()
                     return False
             else:
                 self.nacks += 1
                 if (self._has_majority(self.nacks)):
-                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: {self.acks} for / {self.nacks} against")
+                    logger.debug(f"ELECTION ENDS for Node {self.node_id}: majority vote loss ({self.nacks} against / {self.nacks} total)")
                     self._become_follower(self.current_term)
                     return False
 
@@ -371,6 +393,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
 
             target_commit_index = len(self.log)
 
+            self._log_node_logs(f"Node {self.node_id} preparing heartbeat")
             request = raft_pb2.AppendEntriesRequest(
                 term=self.current_term,
                 leader_id=self.node_id,
@@ -474,6 +497,7 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
                 self.log = request.log
 
                 self._commit_and_execute_up_to(request.commit_index)
+                self._log_node_logs(f"Node {self.node_id} logs after AppendEntries")
 
         return raft_pb2.AppendEntriesResponse(
             term=term,
@@ -486,6 +510,8 @@ class RaftNode(raft_pb2_grpc.RaftNodeServicer):
         
         try:
             result = await self.submit_client_command(request.op, request.params)
+            logger.debug(f"Node {self.node_id} successfully executed forwarded client request: result={result}")
             return raft_pb2.ClientResponse(success=True, result=str(result))
         except Exception as e:
+            logger.debug(f"Node {self.node_id} exception occurred while executing forwarded client request: {e}")
             return raft_pb2.ClientResponse(success=False, error_message=str(e))

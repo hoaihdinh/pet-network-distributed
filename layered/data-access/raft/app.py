@@ -115,8 +115,8 @@ raft_node = simple_raft.RaftNode(
     port=int(os.getenv("GRPC_PORT")),
     peers=os.getenv("PEERS").split(","),
     op_to_function_map={
-        "[LEADER]CREATE_REPORT": create_report_task,
-        "[LEADER]UPDATE_REPORT": update_report_task,
+        "[LEADER]|CREATE_REPORT": create_report_task,
+        "[LEADER]|UPDATE_REPORT": update_report_task,
     }
 )
 
@@ -166,7 +166,7 @@ def create_report():
                 )).decode('utf-8')
 
         status_code = asyncio.run_coroutine_threadsafe(
-            raft_node.submit_client_command("[LEADER]CREATE_REPORT", query),
+            raft_node.submit_client_command("[LEADER]|CREATE_REPORT", query),
             raft_loop
         ).result()
 
@@ -252,7 +252,7 @@ def update_report(report_id):
                 )).decode('utf-8')
         
         status_code = asyncio.run_coroutine_threadsafe(
-            raft_node.submit_client_command("[LEADER]UPDATE_REPORT", query),
+            raft_node.submit_client_command("[LEADER]|UPDATE_REPORT", query),
             raft_loop
         ).result()
 

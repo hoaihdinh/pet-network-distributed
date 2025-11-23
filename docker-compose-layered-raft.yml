@@ -38,8 +38,10 @@ services:
       - CACHE_URL=http://cache-layer:8084
       - PORT=8081
     depends_on:
-      - data-access-lb
-      - cache-layer
+      postgres-layered:
+        condition: service_healthy
+      cache-layer:
+        condition: service_started
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -54,12 +56,18 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - postgres-layered
-      - data-access-raft-node-1
-      - data-access-raft-node-2
-      - data-access-raft-node-3
-      - data-access-raft-node-4
-      - data-access-raft-node-5
+      postgres-layered:
+        condition: service_healthy
+      data-access-raft-node-1:
+        condition: service_started
+      data-access-raft-node-2:
+        condition: service_started
+      data-access-raft-node-3:
+        condition: service_started
+      data-access-raft-node-4:
+        condition: service_started
+      data-access-raft-node-5:
+        condition: service_started
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -84,7 +92,8 @@ services:
       GRPC_PORT: 50051
       PEERS: "2:data-access-raft-node-2:50052,3:data-access-raft-node-3:50053,4:data-access-raft-node-4:50054,5:data-access-raft-node-5:50055"
     depends_on:
-      - postgres-layered
+      postgres-layered:
+        condition: service_healthy
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -109,7 +118,8 @@ services:
       GRPC_PORT: 50052
       PEERS: "1:data-access-raft-node-1:50051,3:data-access-raft-node-3:50053,4:data-access-raft-node-4:50054,5:data-access-raft-node-5:50055"
     depends_on:
-      - postgres-layered
+      postgres-layered:
+        condition: service_healthy
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -134,7 +144,8 @@ services:
       GRPC_PORT: 50053
       PEERS: "1:data-access-raft-node-1:50051,2:data-access-raft-node-2:50052,4:data-access-raft-node-4:50054,5:data-access-raft-node-5:50055"
     depends_on:
-      - postgres-layered
+      postgres-layered:
+        condition: service_healthy
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -159,7 +170,8 @@ services:
       GRPC_PORT: 50054
       PEERS: "1:data-access-raft-node-1:50051,2:data-access-raft-node-2:50052,3:data-access-raft-node-3:50053,5:data-access-raft-node-5:50055"
     depends_on:
-      - postgres-layered
+      postgres-layered:
+        condition: service_healthy
     networks:
       - pet-network-layered
     restart: unless-stopped
@@ -184,7 +196,8 @@ services:
       GRPC_PORT: 50055
       PEERS: "1:data-access-raft-node-1:50051,2:data-access-raft-node-2:50052,3:data-access-raft-node-3:50053,4:data-access-raft-node-4:50054"
     depends_on:
-      - postgres-layered
+      postgres-layered:
+        condition: service_healthy
     networks:
       - pet-network-layered
     restart: unless-stopped
