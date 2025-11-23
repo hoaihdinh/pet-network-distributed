@@ -169,6 +169,7 @@ pet-network-distributed/
 
 ### Quick Start
 The consensus algorithms were both implemented on the Layered Architecture. There are three versions of the Layered Architecture according to the type of consensus desired: None/Base, 2PC, or Raft. Each have their own compose.yml file and therefore have different start commands. You cannot start more than one at a time.
+View bottom of ReadME file for supplemental initialization information.
 
 #### 1. Clone Repository
 ```bash
@@ -332,3 +333,23 @@ docker-compose -f docker-compose-layered.yml logs -f
 # Specific service
 docker-compose -f docker-compose-layered.yml logs -f api-gateway
 ```
+
+
+## Initialization Issues
+Due to details in the ORIGINAL project implementation, the layered architecture may fail to initialize the database. This was always the case for Jennifer, and never the case for Hoai, despite using the same initialization commands that were detailed by the creator. Finding the cause of this seemed outside the scope of this project, so here are steps that allow the initialization to complete correctly everytime.
+```bash
+# Stopping all services
+docker-compose -f docker-compose-layered-2pc.yml down -v
+
+# Start database first
+docker-compose -f docker-compose-layered-2pc.yml up -d postgres-layered redis-layered
+
+# Wait for about 10 seconds, then validate readiness using
+docker exec postgres-layered pg_isready -U petuser
+
+# Start application services
+docker-compose -f docker-compose-layered-2pc.yml build --no-cache
+docker-compose -f docker-compose-layered-2pc.yml up -d
+
+```
+
