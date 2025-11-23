@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+message LogEntry {
+    string op = 1;    // o
+    uint32 term = 2;  // t
+    uint32 index = 3; // k
+}
+
+message RequestVoteRequest {
+    uint32 term = 1;
+    uint32 candidate_id = 2;
+}
+
+message RequestVoteResponse {
+    uint32 term = 1;
+    bool vote_granted = 2;
+}
+
+message AppendEntriesRequest {
+    uint32 term = 1;
+    uint32 leader_id = 2;
+    repeated LogEntry log = 3;
+    uint32 commit_index = 4;
+    uint32 heartbeat_tag = 5;
+}
+
+message AppendEntriesResponse {
+    uint32 term  = 1;
+    bool ack_status = 2;
+    uint32 heartbeat_tag = 3;
+}
+
+message ClientRequest {
+    uint32 id = 1;
+    string op = 2;
+    string params = 3;
+}
+
+message ClientResponse {
+    bool success = 1;
+    string result = 2;
+    string error_message = 3;
+}
+
+message PingRequest {
+    uint32 id = 1;
+}
+
+message PingResponse {
+    bool success = 1;
+}
+
+service RaftNode {
+    rpc RequestVote (RequestVoteRequest) returns (RequestVoteResponse) {}
+    rpc AppendEntries (AppendEntriesRequest) returns (AppendEntriesResponse) {}
+    rpc ForwardClientRequest (ClientRequest) returns (ClientResponse) {}
+    rpc Ping (PingRequest) returns (PingResponse) {}
+}
