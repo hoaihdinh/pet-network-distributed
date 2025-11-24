@@ -236,3 +236,18 @@ Due to the scope of the project, this interaction and behavior was never address
 As such, there may be undefined or unintended behavior when the client submits a create report request and there is a leader raft node, but the leader node is unable to obtain a majority ACKs to execute the client request before the business-logic layer timesout. If the leader node never gets majority ACKs on this client operation, then the client request will never be executed. If the leader node eventually does get majority ACKs, then the client request will be executed despite being unable to send the result to the client as the request was flagged as timed out by the business-logic layer.
 
 However, if a client request was made directly to the Raft Cluster to create a report, and that cluster has a leader but not enough nodes for consensus, then the client request will hang until the leader can obtain a majority ACKs to commit and execute the request.
+
+---
+
+## External Sources
+**Disclaimer:**  
+Generative AI tools (ChatGPT, Claude, and/or Github Copilot) were used in this project to implement 2PC and/or raft
+
+**Links**
+- https://raft.github.io/  
+- https://thesecretlivesofdata.com/raft/
+- https://grpc.github.io/grpc/python/grpc_asyncio.html
+- https://docs.python.org/3/library/asyncio.html
+- https://docs.python.org/3/library/threading.html
+- https://stackoverflow.com/questions/190010/daemon-threads-explanation
+- https://nginx.org/en/docs/beginners_guide.html  
